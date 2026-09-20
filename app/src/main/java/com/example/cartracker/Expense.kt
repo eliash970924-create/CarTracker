@@ -1,9 +1,22 @@
 package com.example.cartracker
 
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "expenses")
+@Entity(
+    tableName = "expenses",
+    foreignKeys = [
+        ForeignKey(
+            entity = Car::class,
+            parentColumns = ["id"],
+            childColumns = ["carId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index(value = ["carId"])]
+)
 data class Expense(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val carId: Int,
@@ -11,5 +24,5 @@ data class Expense(
     val category: String,
     val description: String,
     val costSek: Double,
-    val isMonthly: Boolean = false // NEW: The recurring flag!
+    val isMonthly: Boolean = false
 )
