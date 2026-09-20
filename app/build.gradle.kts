@@ -40,6 +40,13 @@ android {
     }
 }
 
+// Room writes the schema of each database version here as JSON. These files are
+// committed: they are the record that makes real migrations possible, and
+// without them a future version bump has nothing to migrate from.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
