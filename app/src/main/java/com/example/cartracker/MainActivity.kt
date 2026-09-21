@@ -3,9 +3,6 @@ package com.example.cartracker
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
-import android.media.ExifInterface
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
@@ -14,7 +11,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -37,12 +33,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
@@ -60,70 +53,11 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-fun loadAndRotateBitmap(context: Context, uri: Uri): Bitmap? {
-    return try {
-        var stream = context.contentResolver.openInputStream(uri) ?: return null
-        val bitmap = BitmapFactory.decodeStream(stream)
-        stream.close()
-
-        stream = context.contentResolver.openInputStream(uri) ?: return bitmap
-        val exif = ExifInterface(stream)
-        val orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
-        stream.close()
-
-        val matrix = Matrix()
-        when (orientation) {
-            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
-            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
-            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
-        }
-
-        if (matrix.isIdentity) bitmap else Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-    } catch (e: Exception) { null }
-}
-
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme { Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { FuelEntryScreen() } }
-        }
-    }
-}
-
-@Composable
-fun NativeLineChart(data: List<Double>, title: String, lineColor: Color) {
-    if (data.isEmpty()) return
-    val maxVal = (data.maxOrNull() ?: 10.0) + (data.maxOrNull() ?: 10.0) * 0.1
-    val minVal = ((data.minOrNull() ?: 0.0) - (data.minOrNull() ?: 0.0) * 0.1).coerceAtLeast(0.0)
-    Card(elevation = CardDefaults.cardElevation(2.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(16.dp))
-            Canvas(modifier = Modifier.fillMaxWidth().height(180.dp)) {
-                val width = size.width
-                val height = size.height
-                val xStep = if (data.size > 1) width / (data.size - 1) else width
-                val yRange = if (maxVal == minVal) 1.0 else maxVal - minVal
-                val strokePath = Path()
-                val fillPath = Path()
-                fillPath.moveTo(0f, height)
-                data.forEachIndexed { index, value ->
-                    val x = index * xStep
-                    val y = height - ((value - minVal) / yRange * height).toFloat()
-                    if (index == 0) { strokePath.moveTo(x, y); fillPath.lineTo(x, y) } else { strokePath.lineTo(x, y); fillPath.lineTo(x, y) }
-                    drawCircle(color = lineColor, radius = 6f, center = Offset(x, y))
-                }
-                fillPath.lineTo(width, height)
-                fillPath.close()
-                drawPath(path = fillPath, brush = Brush.verticalGradient(colors = listOf(lineColor.copy(alpha = 0.4f), Color.Transparent), startY = 0f, endY = height))
-                drawPath(path = strokePath, color = lineColor, style = Stroke(width = 6f))
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Lowest: %.2f".format(Locale("sv", "SE"), data.minOrNull() ?: 0.0), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                Text("Highest: %.2f".format(Locale("sv", "SE"), data.maxOrNull() ?: 0.0), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-            }
         }
     }
 }
@@ -658,37 +592,9 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                 } else {
                     when (currentTab) {
                         "Charts" -> {
-                            val chartDataPoints = remember(fuelHistory, selectedCar) {
-                                val car = selectedCar ?: return@remember emptyMap()
-
-                                val chronological = fuelHistory.sortedBy { it.dateMillis }
-                                val pPrices = chronological.filter { it.fuelTypeUsed == car.fuelType }.map { it.pricePerLiterSek }
-                                val sPrices = chronological.filter { it.fuelTypeUsed == car.secondaryFuelType }.map { it.pricePerLiterSek }
-
-                                val pCons = mutableListOf<Double>()
-                                val sCons = mutableListOf<Double>()
-
-                                var lastPrimaryOdo: Int? = null
-                                var lastSecondaryOdo: Int? = null
-
-                                chronological.forEach { fuelUp ->
-                                    if (fuelUp.odometerKm > 0) {
-                                        if (fuelUp.fuelTypeUsed == car.fuelType) {
-                                            if (lastPrimaryOdo != null) {
-                                                val dist = fuelUp.odometerKm - lastPrimaryOdo!!
-                                                if (dist > 0 && !fuelUp.missedPrevious) pCons.add((fuelUp.litersFilled / dist) * 100)
-                                            }
-                                            lastPrimaryOdo = fuelUp.odometerKm
-                                        } else if (fuelUp.fuelTypeUsed == car.secondaryFuelType) {
-                                            if (lastSecondaryOdo != null) {
-                                                val dist = fuelUp.odometerKm - lastSecondaryOdo!!
-                                                if (dist > 0 && !fuelUp.missedPrevious) sCons.add((fuelUp.litersFilled / dist) * 100)
-                                            }
-                                            lastSecondaryOdo = fuelUp.odometerKm
-                                        }
-                                    }
-                                }
-                                mapOf("pPrices" to pPrices, "sPrices" to sPrices, "pCons" to pCons, "sCons" to sCons)
+                            val chartSeries = remember(fuelHistory, selectedCar) {
+                                selectedCar?.let { calculateChartSeries(it, fuelHistory) }
+                                    ?: ChartSeries(emptyList(), emptyList(), emptyList(), emptyList())
                             }
 
                             Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
@@ -698,14 +604,14 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                                 }
                                 LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                                     if (chartSubTab == "Price") {
-                                        val pPrices = chartDataPoints["pPrices"] ?: emptyList()
-                                        val sPrices = chartDataPoints["sPrices"] ?: emptyList()
+                                        val pPrices = chartSeries.primaryPrices
+                                        val sPrices = chartSeries.secondaryPrices
                                         if (pPrices.size >= 2) { item { val unit = if (selectedCar!!.fuelType == "Electric") "kWh" else "L"; NativeLineChart(data = pPrices, title = "${selectedCar!!.fuelType} Price (SEK/$unit)", lineColor = activePrimaryColor) } }
                                         else { item { Text("Add at least 2 ${selectedCar!!.fuelType} entries to generate a chart.", color = Color.Gray) } }
                                         if (selectedCar!!.secondaryFuelType != null) { if (sPrices.size >= 2) { item { val unit = if (selectedCar!!.secondaryFuelType == "Electric") "kWh" else "L"; NativeLineChart(data = sPrices, title = "${selectedCar!!.secondaryFuelType} Price (SEK/$unit)", lineColor = Color(0xFF1976D2)) } } }
                                     } else {
-                                        val pCons = chartDataPoints["pCons"] ?: emptyList()
-                                        val sCons = chartDataPoints["sCons"] ?: emptyList()
+                                        val pCons = chartSeries.primaryConsumption
+                                        val sCons = chartSeries.secondaryConsumption
                                         if (pCons.size >= 2) { item { val unit = if (selectedCar!!.fuelType == "Electric") "kWh" else "L"; NativeLineChart(data = pCons, title = "${selectedCar!!.fuelType} Consumption ($unit/100km)", lineColor = activePrimaryColor) } }
                                         else { item { Text("Add at least 2 consecutive ${selectedCar!!.fuelType} entries to generate a chart.", color = Color.Gray) } }
                                         if (selectedCar!!.secondaryFuelType != null) { if (sCons.size >= 2) { item { val unit = if (selectedCar!!.secondaryFuelType == "Electric") "kWh" else "L"; NativeLineChart(data = sCons, title = "${selectedCar!!.secondaryFuelType} Consumption ($unit/100km)", lineColor = Color(0xFFFBC02D)) } } }
@@ -769,64 +675,9 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                         }
 
                         "Entries" -> {
-                            // HÄR BÖRJAR DEN NYA PERFEKTA BERÄKNINGEN FÖR LADDHYBRIDER
                             val dashboardStats = remember(fuelHistory, selectedCar) {
-                                val car = selectedCar ?: return@remember null
-                                val pType = car.fuelType
-                                val sType = car.secondaryFuelType
-
-                                var totalP_Liters = 0.0
-                                var totalP_Cost = 0.0
-                                var totalP_Dist = 0
-
-                                var totalS_Liters = 0.0
-                                var totalS_Cost = 0.0
-                                var totalS_Dist = 0
-
-                                val chronological = fuelHistory.sortedBy { it.dateMillis }
-
-                                var lastPOdo = car.initialOdometer
-                                var lastSOdo = car.initialOdometer
-
-                                chronological.forEach { fuelUp ->
-                                    if (fuelUp.odometerKm > 0) {
-                                        if (fuelUp.fuelTypeUsed == pType) {
-                                            val dist = fuelUp.odometerKm - lastPOdo
-                                            if (dist > 0 && !fuelUp.missedPrevious) {
-                                                totalP_Dist += dist
-                                                totalP_Liters += fuelUp.litersFilled
-                                                totalP_Cost += fuelUp.totalCostSek
-                                            }
-                                            lastPOdo = fuelUp.odometerKm
-                                        } else if (fuelUp.fuelTypeUsed == sType) {
-                                            val dist = fuelUp.odometerKm - lastSOdo
-                                            if (dist > 0 && !fuelUp.missedPrevious) {
-                                                totalS_Dist += dist
-                                                totalS_Liters += fuelUp.litersFilled
-                                                totalS_Cost += fuelUp.totalCostSek
-                                            }
-                                            lastSOdo = fuelUp.odometerKm
-                                        }
-                                    }
-                                }
-
-                                val avgPrimary = if (totalP_Dist > 0) (totalP_Liters / totalP_Dist) * 100 else 0.0
-                                val costPrimary = if (totalP_Dist > 0) (totalP_Cost / totalP_Dist) * 10 else 0.0
-
-                                val avgSecondary = if (totalS_Dist > 0) (totalS_Liters / totalS_Dist) * 100 else 0.0
-                                val costSecondary = if (totalS_Dist > 0) (totalS_Cost / totalS_Dist) * 10 else 0.0
-
-                                val blendedCost = costPrimary + costSecondary
-
-                                mapOf(
-                                    "avgPrimary" to avgPrimary,
-                                    "avgSecondary" to avgSecondary,
-                                    "costPrimary" to costPrimary,
-                                    "costSecondary" to costSecondary,
-                                    "blended" to blendedCost
-                                )
+                                selectedCar?.let { calculateFuelStats(it, fuelHistory) }
                             }
-                            // HÄR SLUTAR DEN NYA BERÄKNINGEN
 
                             Column(modifier = Modifier.fillMaxSize().padding(paddingValues).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -886,16 +737,16 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                                     Text("${selectedCar!!.fuelType} Avg", style = MaterialTheme.typography.labelMedium)
                                                     val pUnit = if (selectedCar!!.fuelType == "Electric") "kWh" else "L"
-                                                    Text("%.2f $pUnit/100km".format(svLocale, dashboardStats["avgPrimary"]), fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                                    Text("%.2f kr/mil".format(svLocale, dashboardStats["costPrimary"]), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f))
+                                                    Text("%.2f $pUnit/100km".format(svLocale, dashboardStats.avgPrimary), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                                    Text("%.2f kr/mil".format(svLocale, dashboardStats.costPrimary), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f))
                                                 }
                                                 if (selectedCar!!.secondaryFuelType != null) {
                                                     VerticalDivider(modifier = Modifier.height(50.dp))
                                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                                         Text("${selectedCar!!.secondaryFuelType} Avg", style = MaterialTheme.typography.labelMedium)
                                                         val sUnit = if (selectedCar!!.secondaryFuelType == "Electric") "kWh" else "L"
-                                                        Text("%.2f $sUnit/100km".format(svLocale, dashboardStats["avgSecondary"]), fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                                        Text("%.2f kr/mil".format(svLocale, dashboardStats["costSecondary"]), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f))
+                                                        Text("%.2f $sUnit/100km".format(svLocale, dashboardStats.avgSecondary), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                                        Text("%.2f kr/mil".format(svLocale, dashboardStats.costSecondary), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f))
                                                     }
                                                 }
                                             }
@@ -903,7 +754,7 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                                                 val costLabel = if (selectedCar!!.secondaryFuelType != null) "True Blended Cost: " else "Total Cost: "
                                                 Text(costLabel, style = MaterialTheme.typography.bodyMedium)
-                                                Text("%.2f kr/mil".format(svLocale, dashboardStats["blended"]), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 16.sp)
+                                                Text("%.2f kr/mil".format(svLocale, dashboardStats.blendedCost), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 16.sp)
                                             }
                                         }
                                     }
