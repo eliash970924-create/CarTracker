@@ -1,9 +1,7 @@
 package com.example.cartracker
 
 import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
-import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -92,10 +90,14 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
 
     val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
-            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            newCarImageUri = uri.toString()
+            // Copied into app storage straight away rather than kept as the
+            // picker's content:// URI. That URI is a grant: it dies on
+            // reinstall, and if the original is deleted from the gallery, so
+            // the photo would silently stop appearing. Copying now also means
+            // no persistable permission is needed.
+            newCarImageUri = copyPhotoIntoAppStorage(context, uri)
             try {
-                val bitmap = loadAndRotateBitmap(context, uri)
+                val bitmap = loadCarPhoto(context, newCarImageUri)
                 if (bitmap != null) {
                     val scaled = Bitmap.createScaledBitmap(bitmap, 1, 1, true)
                     val cInt = scaled.getPixel(0, 0)
@@ -108,6 +110,8 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
         }
     }
 
+    // Rescues photos picked before they were copied into app storage.
+    LaunchedEffect(Unit) { viewModel.adoptLegacyPhotos() }
     LaunchedEffect(selectedCar) { selectedCar?.let { viewModel.checkRecurringExpenses(it.id) } }
     LaunchedEffect(cars) { if (selectedCar == null && cars.isNotEmpty()) selectedCar = cars.first() }
 
@@ -504,7 +508,7 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                                 modifier = Modifier.padding(start = 0.dp, end = 16.dp, top = 0.dp, bottom = 0.dp)
                             ) {
                                 val bmp = remember(car.imageUri) {
-                                    try { car.imageUri?.let { uriStr -> loadAndRotateBitmap(context, Uri.parse(uriStr))?.asImageBitmap() } } catch (e: Exception) { null }
+                                    try { loadCarPhoto(context, car.imageUri)?.asImageBitmap() } catch (e: Exception) { null }
                                 }
                                 if (bmp != null) {
                                     Image(bitmap = bmp, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(56.dp).clip(CircleShape))

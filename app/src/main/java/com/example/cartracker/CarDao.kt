@@ -22,6 +22,13 @@ interface CarDao {
     @Query("SELECT * FROM cars ORDER BY id ASC")
     fun getAllCars(): Flow<List<Car>>
 
+    @Query("SELECT * FROM cars WHERE id = :id LIMIT 1")
+    fun getCarById(id: Int): Car?
+
+    // Plain list for the one-off photo adoption pass.
+    @Query("SELECT * FROM cars")
+    fun getCarsList(): List<Car>
+
     // Import matches an existing car by name before creating one.
     @Query("SELECT * FROM cars WHERE name = :name LIMIT 1")
     fun getCarByName(name: String): Car?
