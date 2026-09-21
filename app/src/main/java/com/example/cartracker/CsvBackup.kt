@@ -1,5 +1,7 @@
 package com.example.cartracker
 
+import java.io.Writer
+
 /**
  * CSV backup format, shared by export and import.
  *
@@ -31,7 +33,7 @@ const val FUEL_HEADER =
 
 const val EXPENSE_HEADER = "Date,Category,Description,Cost (SEK),Monthly"
 
-const val CAR_HEADER = "Name,Primary Fuel,Secondary Fuel,Initial Odometer,Theme Colour"
+const val CAR_HEADER = "Name,Primary Fuel,Secondary Fuel,Initial Odometer,Theme Colour,Photo"
 
 /**
  * The car a backup describes, so a file can be restored onto a fresh install
@@ -44,7 +46,9 @@ data class ImportedCar(
     val fuelType: String,
     val secondaryFuelType: String?,
     val initialOdometer: Int,
-    val themeColor: Long?
+    val themeColor: Long?,
+    /** File name of a photo carried alongside, once copied into app storage. */
+    val photo: String? = null
 )
 
 /**
@@ -105,4 +109,52 @@ fun parseCsvLine(line: String): List<String> {
     }
     fields.add(field.toString())
     return fields
+}
+
+
+/**
+ * Writes the backup for one car: fill-ups, then expenses, then the car.
+ *
+ * Shared by the plain CSV export and the zip backup so the two cannot drift.
+ * [photoName] is written into the car row only when a photo travels with the
+ * file, which a bare CSV cannot carry.
+ */
+fun writeBackupCsv(
+    writer: Writer,
+    car: Car?,
+    fuelUps: List<FuelUp>,
+    expenses: List<Expense>,
+    photoName: String? = null,
+    formatDate: (Long) -> String
+) {
+    writer.write(FUEL_HEADER + "\n")
+    fuelUps.forEach { fuelUp ->
+        writer.write(
+            "${formatDate(fuelUp.dateMillis)},${fuelUp.odometerKm},${csvEscape(fuelUp.fuelTypeUsed)}," +
+                "${fuelUp.litersFilled},${fuelUp.pricePerLiterSek},${fuelUp.totalCostSek},${fuelUp.missedPrevious}\n"
+        )
+    }
+
+    // Appended as a second section so the block above stays byte-identical to
+    // what earlier versions wrote.
+    if (expenses.isNotEmpty()) {
+        writer.write("\n" + EXPENSE_SECTION_MARKER + "\n")
+        writer.write(EXPENSE_HEADER + "\n")
+        expenses.forEach { expense ->
+            writer.write(
+                "${formatDate(expense.dateMillis)},${csvEscape(expense.category)}," +
+                    "${csvEscape(expense.description)},${expense.costSek},${expense.isMonthly}\n"
+            )
+        }
+    }
+
+    // Last, so the two blocks above keep the byte layout older versions wrote.
+    car?.let {
+        writer.write("\n" + CAR_SECTION_MARKER + "\n")
+        writer.write(CAR_HEADER + "\n")
+        writer.write(
+            "${csvEscape(it.name)},${csvEscape(it.fuelType)},${csvEscape(it.secondaryFuelType ?: "")}," +
+                "${it.initialOdometer},${it.themeColor ?: ""},${csvEscape(photoName ?: "")}\n"
+        )
+    }
 }

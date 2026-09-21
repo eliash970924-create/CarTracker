@@ -85,41 +85,57 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
 
     val svLocale = Locale.forLanguageTag("sv-SE")
 
-    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+    val formatBackupDate: (Long) -> String = { millis ->
+        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(millis))
+    }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
         uri?.let {
             scope.launch(Dispatchers.IO) {
                 try {
-                    val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                    context.contentResolver.openOutputStream(it)?.bufferedWriter(Charsets.UTF_8)?.use { writer ->
-                        writer.write(FUEL_HEADER + "\n")
-                        fuelHistory.forEach { fuelUp ->
-                            val dateStr = dateFormat.format(Date(fuelUp.dateMillis))
-                            writer.write("$dateStr,${fuelUp.odometerKm},${csvEscape(fuelUp.fuelTypeUsed)},${fuelUp.litersFilled},${fuelUp.pricePerLiterSek},${fuelUp.totalCostSek},${fuelUp.missedPrevious}\n")
+                    context.contentResolver.openOutputStream(it)
+                        ?.bufferedWriter(Charsets.UTF_8)
+                        ?.use { writer ->
+                            writeBackupCsv(
+                                writer, selectedCar, fuelHistory, expenseHistory,
+                                photoName = null, formatDate = formatBackupDate
+                            )
                         }
-
-                        // Appended as a second section so the block above stays
-                        // byte-identical to what earlier versions wrote.
-                        if (expenseHistory.isNotEmpty()) {
-                            writer.write("\n" + EXPENSE_SECTION_MARKER + "\n")
-                            writer.write(EXPENSE_HEADER + "\n")
-                            expenseHistory.forEach { expense ->
-                                val dateStr = dateFormat.format(Date(expense.dateMillis))
-                                writer.write("$dateStr,${csvEscape(expense.category)},${csvEscape(expense.description)},${expense.costSek},${expense.isMonthly}\n")
-                            }
-                        }
-
-                        // Last, so the two blocks above keep the byte layout
-                        // older versions wrote. Lets a file be restored onto a
-                        // fresh install without creating the car by hand.
-                        selectedCar?.let { car ->
-                            writer.write("\n" + CAR_SECTION_MARKER + "\n")
-                            writer.write(CAR_HEADER + "\n")
-                            writer.write("${csvEscape(car.name)},${csvEscape(car.fuelType)},${csvEscape(car.secondaryFuelType ?: "")},${car.initialOdometer},${car.themeColor ?: ""}\n")
-                        }
-                    }
                     val summary = "Exported ${fuelHistory.size} fill-ups and ${expenseHistory.size} expenses"
                     launch(Dispatchers.Main) { Toast.makeText(context, summary, Toast.LENGTH_LONG).show() }
-                } catch (e: Exception) { launch(Dispatchers.Main) { Toast.makeText(context, "Export failed", Toast.LENGTH_SHORT).show() } }
+                } catch (e: Exception) {
+                    launch(Dispatchers.Main) { Toast.makeText(context, "Export failed", Toast.LENGTH_SHORT).show() }
+                }
+            }
+        }
+    }
+
+    // A second export, because the two serve different ends: the CSV is what
+    // opens in a spreadsheet, the zip is what survives losing the phone.
+    val exportZipLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        uri?.let {
+            scope.launch(Dispatchers.IO) {
+                try {
+                    context.contentResolver.openOutputStream(it)?.use { output ->
+                        writeBackupZip(
+                            output, context, selectedCar, fuelHistory, expenseHistory,
+                            formatDate = formatBackupDate
+                        )
+                    }
+                    val withPhoto = selectedCar?.imageUri?.let { photo ->
+                        !isExternalPhotoReference(photo)
+                    } ?: false
+                    val summary = "Backed up ${fuelHistory.size} fill-ups, " +
+                        "${expenseHistory.size} expenses" +
+                        if (withPhoto) " and the photo" else ""
+                    launch(Dispatchers.Main) { Toast.makeText(context, summary, Toast.LENGTH_LONG).show() }
+                } catch (e: Exception) {
+                    launch(Dispatchers.Main) { Toast.makeText(context, "Backup failed", Toast.LENGTH_SHORT).show() }
+                }
             }
         }
     }
@@ -134,12 +150,22 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                     val expenseRows = mutableListOf<Expense>()
                     var importedCar: ImportedCar? = null
 
-                    context.contentResolver.openInputStream(it)?.bufferedReader(Charsets.UTF_8)?.useLines { lines ->
+                    // Accepts a zip backup or a bare CSV: every file the app
+                    // has written still imports.
+                    val backup = readBackup(context) { context.contentResolver.openInputStream(it) }
+                    if (backup == null) {
+                        launch(Dispatchers.Main) {
+                            Toast.makeText(context, "Could not read that file", Toast.LENGTH_LONG).show()
+                        }
+                        return@launch
+                    }
+
+                    run {
                         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
                         var section = Section.FUEL
                         var skipHeader = false
 
-                        lines.forEachIndexed { index, rawLine ->
+                        backup.csv.split("\n").forEachIndexed { index, rawLine ->
                             val line = rawLine.trim()
                             when {
                                 line.isEmpty() -> return@forEachIndexed
@@ -222,7 +248,9 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                     }
                     viewModel.importBackup(
                         fallbackCarId = fallbackCarId,
-                        car = importedCar,
+                        // The stored name comes from the archive read, not the
+                        // car row: the photo is saved under a fresh name.
+                        car = importedCar?.copy(photo = backup.photoName),
                         fuelUps = fuelRows,
                         expenses = expenseRows,
                         dayOf = dayOf
@@ -347,6 +375,11 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                     onExport = {
                         val safeName = selectedCar!!.name.replace(" ", "_")
                         exportLauncher.launch("${safeName}_History.csv")
+                        scope.launch { drawerState.close() }
+                    },
+                    onExportBackup = {
+                        val safeName = selectedCar!!.name.replace(" ", "_")
+                        exportZipLauncher.launch("${safeName}_Backup.zip")
                         scope.launch { drawerState.close() }
                     }
                 )

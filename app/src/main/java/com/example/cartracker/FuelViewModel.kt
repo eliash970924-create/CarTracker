@@ -135,7 +135,7 @@ class FuelViewModel(application: Application) : AndroidViewModel(application) {
                             fuelType = car.fuelType,
                             secondaryFuelType = car.secondaryFuelType,
                             initialOdometer = car.initialOdometer,
-                            imageUri = null,
+                            imageUri = car.photo,
                             themeColor = car.themeColor
                         )
                     ).toInt()
