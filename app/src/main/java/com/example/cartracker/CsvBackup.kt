@@ -21,11 +21,47 @@ package com.example.cartracker
  * one. That keeps a file exported on a Swedish device readable everywhere.
  */
 const val EXPENSE_SECTION_MARKER = "[Expenses]"
+const val CAR_SECTION_MARKER = "[Car]"
+
+/** Which block of the file the importer is currently reading. */
+enum class Section { FUEL, EXPENSES, CAR }
 
 const val FUEL_HEADER =
     "Date,Odometer (km),Fuel Type,Amount,Price per Unit (SEK),Total Cost (SEK),Missed Previous"
 
 const val EXPENSE_HEADER = "Date,Category,Description,Cost (SEK),Monthly"
+
+const val CAR_HEADER = "Name,Primary Fuel,Secondary Fuel,Initial Odometer,Theme Colour"
+
+/**
+ * The car a backup describes, so a file can be restored onto a fresh install
+ * without creating the car by hand first. The photo is deliberately left out:
+ * it is stored as a content:// URI granted to this install, which means
+ * nothing on another device or after a reinstall.
+ */
+data class ImportedCar(
+    val name: String,
+    val fuelType: String,
+    val secondaryFuelType: String?,
+    val initialOdometer: Int,
+    val themeColor: Long?
+)
+
+/**
+ * Identity used to recognise a row already present, so re-importing a file
+ * merges instead of duplicating.
+ *
+ * Keyed on the calendar day rather than the raw timestamp: export writes
+ * yyyy-MM-dd, so a row that goes out and comes back lands at midnight while
+ * the row it came from still carries the time of day it was entered. Matching
+ * on dateMillis would therefore never find the original and would duplicate
+ * every row in the file.
+ */
+fun fuelKey(dateStr: String, odometerKm: Int, liters: Double, fuelType: String): String =
+    "$dateStr|$odometerKm|$liters|$fuelType"
+
+fun expenseKey(dateStr: String, category: String, description: String, cost: Double): String =
+    "$dateStr|$category|$description|$cost"
 
 /**
  * Quotes a field if it contains a comma, quote or newline, doubling any quote
