@@ -1,18 +1,15 @@
 package com.example.cartracker
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -31,15 +28,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -77,38 +71,9 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
     var showAddCarDialog by remember { mutableStateOf(false) }
     var editingCar by remember { mutableStateOf<Car?>(null) }
 
-    var carName by remember { mutableStateOf("") }
-    var initialOdo by remember { mutableStateOf("") }
-    var nameError by remember { mutableStateOf<String?>(null) }
-    var odoError by remember { mutableStateOf<String?>(null) }
-    var selectedFuel1 by remember { mutableStateOf("Petrol") }
-    var isBifuel by remember { mutableStateOf(false) }
-    var selectedFuel2 by remember { mutableStateOf("Electric") }
-    var newCarImageUri by remember { mutableStateOf<String?>(null) }
-    var newCarDetectedColor by remember { mutableStateOf<Long?>(null) }
-    var newCarThemeColor by remember { mutableStateOf<Long>(0xFF1976D2) }
-
-    val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) {
-            // Copied into app storage straight away rather than kept as the
-            // picker's content:// URI. That URI is a grant: it dies on
-            // reinstall, and if the original is deleted from the gallery, so
-            // the photo would silently stop appearing. Copying now also means
-            // no persistable permission is needed.
-            newCarImageUri = copyPhotoIntoAppStorage(context, uri)
-            try {
-                val bitmap = loadCarPhoto(context, newCarImageUri)
-                if (bitmap != null) {
-                    val scaled = Bitmap.createScaledBitmap(bitmap, 1, 1, true)
-                    val cInt = scaled.getPixel(0, 0)
-                    scaled.recycle()
-                    val hexColor = Color(cInt).copy(alpha = 1f).toArgb().toLong() and 0xFFFFFFFFL
-                    newCarDetectedColor = hexColor
-                    newCarThemeColor = hexColor
-                }
-            } catch (e: Exception) { }
-        }
-    }
+    // Owned here, not by the dialog: the drawer's "Add New Car" clears it and
+    // the top bar's edit button fills it from the selected car.
+    val carForm = rememberCarFormState()
 
     // Rescues photos picked before they were copied into app storage.
     LaunchedEffect(Unit) { viewModel.adoptLegacyPhotos() }
@@ -307,94 +272,38 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
     }
 
     if (showAddCarDialog || editingCar != null) {
-        val isEditMode = editingCar != null
-        var expanded1 by remember { mutableStateOf(false) }
-        val fuelTypes = listOf("Petrol", "Diesel", "Electric", "Gas", "E85")
-        var expanded2 by remember { mutableStateOf(false) }
-        var showCustomColorSlider by remember { mutableStateOf(false) }
-        var customHue by remember { mutableFloatStateOf(0f) }
-
-        val themePalette = listOf(0xFF1976D2, 0xFFD32F2F, 0xFF388E3C, 0xFFFBC02D, 0xFF8E24AA, 0xFF424242)
-        val rainbowBrush = Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red))
-
-        AlertDialog(
-            onDismissRequest = { showAddCarDialog = false; editingCar = null },
-            title = { Text(if (isEditMode) "Edit Car Details" else "Add New Car") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.fillMaxWidth()) {
-                        Text(if (newCarImageUri == null) "Upload Car Photo" else "Change Photo")
-                    }
-
-                    Text("Select App Theme Color", style = MaterialTheme.typography.labelMedium)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        if (newCarDetectedColor != null) {
-                            Box(modifier = Modifier.size(32.dp).clip(CircleShape).background(Color(newCarDetectedColor!!)).border(width = if (newCarThemeColor == newCarDetectedColor) 3.dp else 0.dp, color = if (newCarThemeColor == newCarDetectedColor) Color.Black else Color.Transparent, shape = CircleShape).clickable { newCarThemeColor = newCarDetectedColor!!; showCustomColorSlider = false })
-                        }
-                        themePalette.forEach { colorHex ->
-                            Box(modifier = Modifier.size(32.dp).clip(CircleShape).background(Color(colorHex)).border(width = if (newCarThemeColor == colorHex) 3.dp else 0.dp, color = if (newCarThemeColor == colorHex) Color.Black else Color.Transparent, shape = CircleShape).clickable { newCarThemeColor = colorHex; showCustomColorSlider = false })
-                        }
-                        Box(modifier = Modifier.size(32.dp).clip(CircleShape).background(rainbowBrush).clickable { showCustomColorSlider = !showCustomColorSlider })
-                    }
-
-                    if (showCustomColorSlider) {
-                        Column {
-                            Slider(value = customHue, onValueChange = { customHue = it; newCarThemeColor = Color.hsv(it, 1f, 1f).toArgb().toLong() and 0xFFFFFFFFL }, valueRange = 0f..360f)
-                            Box(modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape).background(Brush.horizontalGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red))))
-                        }
-                    }
-
-                    OutlinedTextField(value = carName, onValueChange = { carName = it; nameError = null }, label = { Text("Car Name") }, modifier = Modifier.fillMaxWidth(), isError = nameError != null, supportingText = { if (nameError != null) Text(nameError!!) }, singleLine = true, keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words))
-                    ExposedDropdownMenuBox(expanded = expanded1, onExpandedChange = { expanded1 = !expanded1 }) {
-                        OutlinedTextField(value = selectedFuel1, onValueChange = {}, readOnly = true, label = { Text("Primary Fuel") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded1) }, colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(), modifier = Modifier.menuAnchor().fillMaxWidth())
-                        ExposedDropdownMenu(expanded = expanded1, onDismissRequest = { expanded1 = false }) { fuelTypes.forEach { ft -> DropdownMenuItem(text = { Text(ft) }, onClick = { selectedFuel1 = ft; expanded1 = false }) } }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = isBifuel, onCheckedChange = { isBifuel = it }); Text("Bifuel / Hybrid vehicle") }
-                    if (isBifuel) {
-                        ExposedDropdownMenuBox(expanded = expanded2, onExpandedChange = { expanded2 = !expanded2 }) {
-                            OutlinedTextField(value = selectedFuel2, onValueChange = {}, readOnly = true, label = { Text("Secondary Fuel") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded2) }, colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(), modifier = Modifier.menuAnchor().fillMaxWidth())
-                            ExposedDropdownMenu(expanded = expanded2, onDismissRequest = { expanded2 = false }) { fuelTypes.forEach { ft -> DropdownMenuItem(text = { Text(ft) }, onClick = { selectedFuel2 = ft; expanded2 = false }) } }
-                        }
-                    }
-                    OutlinedTextField(value = initialOdo, onValueChange = { initialOdo = it; odoError = null }, label = { Text("Current Odometer (km)") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth(), isError = odoError != null, supportingText = { if (odoError != null) Text(odoError!!) })
-
-                    if (isEditMode) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.deleteCar(editingCar!!)
-                                if (selectedCar?.id == editingCar!!.id) selectedCar = null
-                                showAddCarDialog = false
-                                editingCar = null
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)
-                        ) {
-                            Text("Delete Car")
-                        }
-                    }
+        AddEditCarDialog(
+            form = carForm,
+            isEditMode = editingCar != null,
+            onSave = { name, primaryFuel, secondaryFuel, odometer, photo, themeColor ->
+                val editing = editingCar
+                if (editing != null) {
+                    val updated = editing.copy(
+                        name = name,
+                        fuelType = primaryFuel,
+                        secondaryFuelType = secondaryFuel,
+                        initialOdometer = odometer,
+                        imageUri = photo,
+                        themeColor = themeColor
+                    )
+                    viewModel.updateCar(updated)
+                    // The selected car holds a copy, so it needs the new values too.
+                    if (selectedCar?.id == updated.id) selectedCar = updated
+                } else {
+                    viewModel.saveCar(name, primaryFuel, secondaryFuel, odometer, photo, themeColor)
                 }
+                showAddCarDialog = false
+                editingCar = null
             },
-            confirmButton = {
-                Button(onClick = {
-                    val odo = initialOdo.toIntOrNull()
-                    var valid = true
-                    if (carName.isBlank()) { nameError = "Car name is required"; valid = false }
-                    if (odo == null) { odoError = "Valid odometer required"; valid = false }
-
-                    if (valid && odo != null) {
-                        if (isEditMode) {
-                            val updatedCar = editingCar!!.copy(name = carName, fuelType = selectedFuel1, secondaryFuelType = if (isBifuel) selectedFuel2 else null, initialOdometer = odo, imageUri = newCarImageUri, themeColor = newCarThemeColor)
-                            viewModel.updateCar(updatedCar)
-                            if (selectedCar?.id == updatedCar.id) { selectedCar = updatedCar }
-                        } else {
-                            viewModel.saveCar(carName, selectedFuel1, if (isBifuel) selectedFuel2 else null, odo, newCarImageUri, newCarThemeColor)
-                        }
-                        showAddCarDialog = false; editingCar = null
-                    }
-                }) { Text("Save") }
+            onDelete = {
+                editingCar?.let { car ->
+                    viewModel.deleteCar(car)
+                    if (selectedCar?.id == car.id) selectedCar = null
+                }
+                showAddCarDialog = false
+                editingCar = null
             },
-            dismissButton = { TextButton(onClick = { showAddCarDialog = false; editingCar = null }) { Text("Cancel") } }
+            onDismiss = { showAddCarDialog = false; editingCar = null }
         )
     }
 
@@ -483,8 +392,7 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(
                         onClick = {
-                            carName = ""; initialOdo = ""; nameError = null; odoError = null; selectedFuel1 = "Petrol"; isBifuel = false; selectedFuel2 = "Electric"
-                            newCarImageUri = null; newCarDetectedColor = null; newCarThemeColor = 0xFF1976D2
+                            carForm.reset()
                             showAddCarDialog = true
                         },
                         modifier = Modifier.padding(horizontal = 12.dp).fillMaxWidth()
@@ -526,16 +434,7 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                         actions = {
                             if (selectedCar != null) {
                                 IconButton(onClick = {
-                                    carName = selectedCar!!.name
-                                    initialOdo = selectedCar!!.initialOdometer.toString()
-                                    selectedFuel1 = selectedCar!!.fuelType
-                                    isBifuel = selectedCar!!.secondaryFuelType != null
-                                    selectedFuel2 = selectedCar!!.secondaryFuelType ?: "Electric"
-                                    newCarImageUri = selectedCar!!.imageUri
-                                    newCarThemeColor = selectedCar!!.themeColor ?: 0xFF1976D2
-                                    newCarDetectedColor = null
-                                    nameError = null
-                                    odoError = null
+                                    carForm.loadFrom(selectedCar!!)
                                     editingCar = selectedCar
                                 }) { Icon(Icons.Default.Edit, "Edit Car") }
                             }
