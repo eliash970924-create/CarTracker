@@ -146,10 +146,6 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
             val fallbackCarName = selectedCar?.name
             scope.launch(Dispatchers.IO) {
                 try {
-                    val fuelRows = mutableListOf<FuelUp>()
-                    val expenseRows = mutableListOf<Expense>()
-                    var importedCar: ImportedCar? = null
-
                     // Accepts a zip backup or a bare CSV: every file the app
                     // has written still imports.
                     val backup = readBackup(context) { context.contentResolver.openInputStream(it) }
@@ -160,100 +156,21 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                         return@launch
                     }
 
-                    run {
-                        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                        var section = Section.FUEL
-                        var skipHeader = false
-
-                        backup.csv.split("\n").forEachIndexed { index, rawLine ->
-                            val line = rawLine.trim()
-                            when {
-                                line.isEmpty() -> return@forEachIndexed
-                                // A file written before expenses existed never
-                                // reaches this marker and parses as fuel only.
-                                line == EXPENSE_SECTION_MARKER -> {
-                                    section = Section.EXPENSES
-                                    skipHeader = true
-                                    return@forEachIndexed
-                                }
-                                line == CAR_SECTION_MARKER -> {
-                                    section = Section.CAR
-                                    skipHeader = true
-                                    return@forEachIndexed
-                                }
-                                index == 0 -> return@forEachIndexed   // fuel header
-                                skipHeader -> {
-                                    skipHeader = false
-                                    return@forEachIndexed             // expense header
-                                }
-                            }
-
-                            val tokens = parseCsvLine(line)
-
-                            // Parsed before any date handling: a car row's
-                            // first field is a name, and feeding that to
-                            // SimpleDateFormat throws and aborts the import.
-                            if (section == Section.CAR) {
-                                if (tokens.size >= 4 && tokens[0].isNotBlank()) {
-                                    importedCar = ImportedCar(
-                                        name = tokens[0],
-                                        fuelType = tokens[1].ifBlank { "Petrol" },
-                                        secondaryFuelType = tokens[2].ifBlank { null },
-                                        initialOdometer = tokens[3].toIntOrNull() ?: 0,
-                                        themeColor = tokens.getOrNull(4)?.toLongOrNull()
-                                    )
-                                }
-                                return@forEachIndexed
-                            }
-
-                            val date = tokens.getOrNull(0)?.let { t -> dateFormat.parse(t)?.time }
-                                ?: System.currentTimeMillis()
-
-                            if (section == Section.EXPENSES) {
-                                val cost = tokens.getOrNull(3)?.toDoubleOrNull() ?: 0.0
-                                if (tokens.size >= 5 && cost > 0) {
-                                    expenseRows.add(
-                                        Expense(
-                                            carId = 0,
-                                            dateMillis = date,
-                                            category = tokens[1],
-                                            description = tokens[2],
-                                            costSek = cost,
-                                            isMonthly = tokens[4].toBooleanStrictOrNull() ?: false
-                                        )
-                                    )
-                                }
-                            } else {
-                                val amount = tokens.getOrNull(3)?.toDoubleOrNull() ?: 0.0
-                                if (tokens.size >= 7 && amount > 0) {
-                                    fuelRows.add(
-                                        FuelUp(
-                                            carId = 0,
-                                            fuelTypeUsed = tokens[2],
-                                            dateMillis = date,
-                                            odometerKm = tokens[1].toIntOrNull() ?: 0,
-                                            litersFilled = amount,
-                                            pricePerLiterSek = tokens[4].toDoubleOrNull() ?: 0.0,
-                                            totalCostSek = tokens[5].toDoubleOrNull() ?: 0.0,
-                                            missedPrevious = tokens[6].toBooleanStrictOrNull() ?: false
-                                        )
-                                    )
-                                }
-                            }
-                        }
+                    val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                    val parsed = parseBackupCsv(backup.csv) { text ->
+                        // parse throws on anything it does not recognise, and
+                        // an unreadable row is skipped rather than aborting.
+                        runCatching { dateFormat.parse(text)?.time }.getOrNull()
                     }
 
-                    val dayOf: (Long) -> String = { millis ->
-                        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(millis))
-                    }
                     viewModel.importBackup(
                         fallbackCarId = fallbackCarId,
                         // The stored name comes from the archive read, not the
                         // car row: the photo is saved under a fresh name.
-                        car = importedCar?.copy(photo = backup.photoName),
-                        fuelUps = fuelRows,
-                        expenses = expenseRows,
-                        dayOf = dayOf
+                        car = parsed.car?.copy(photo = backup.photoName),
+                        fuelUps = parsed.fuelUps,
+                        expenses = parsed.expenses,
+                        dayOf = formatBackupDate
                     ) { result ->
                         val message = when {
                             result == null ->
@@ -264,6 +181,9 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                                 append("added ${result.fuelAdded} fill-ups, ${result.expensesAdded} expenses")
                                 val skipped = result.fuelSkipped + result.expensesSkipped
                                 if (skipped > 0) append(" - skipped $skipped already present")
+                                if (parsed.unreadableRows > 0) {
+                                    append(" - ${parsed.unreadableRows} rows could not be read")
+                                }
                             }
                         }
                         Toast.makeText(context, message, Toast.LENGTH_LONG).show()

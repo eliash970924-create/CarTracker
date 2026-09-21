@@ -158,3 +158,122 @@ fun writeBackupCsv(
         )
     }
 }
+
+/** What a backup file's text yielded. */
+data class ParsedBackup(
+    val car: ImportedCar?,
+    val fuelUps: List<FuelUp>,
+    val expenses: List<Expense>,
+    /** Rows that could not be read and were left out. */
+    val unreadableRows: Int
+)
+
+/**
+ * Reads a backup's text into rows.
+ *
+ * Kept out of the UI and given [parseDate] as a parameter so it can be tested
+ * without a date formatter or a device locale.
+ *
+ * A row that cannot be read is skipped and counted rather than aborting the
+ * import, which is what a single unreadable date used to do: one bad line in
+ * a thousand meant none of the thousand arrived. It is not given a substitute
+ * date either - an invented date would sit in the history looking like fact.
+ *
+ * Rows carry no car id; the caller decides which car they belong to.
+ */
+fun parseBackupCsv(csv: String, parseDate: (String) -> Long?): ParsedBackup {
+    val fuelUps = mutableListOf<FuelUp>()
+    val expenses = mutableListOf<Expense>()
+    var car: ImportedCar? = null
+    var unreadable = 0
+
+    var section = Section.FUEL
+    var skipHeader = false
+
+    csv.split("\n").forEachIndexed { index, rawLine ->
+        val line = rawLine.trim()
+        when {
+            line.isEmpty() -> return@forEachIndexed
+            // A file written before expenses existed never reaches this
+            // marker and parses as fuel only.
+            line == EXPENSE_SECTION_MARKER -> {
+                section = Section.EXPENSES
+                skipHeader = true
+                return@forEachIndexed
+            }
+            line == CAR_SECTION_MARKER -> {
+                section = Section.CAR
+                skipHeader = true
+                return@forEachIndexed
+            }
+            index == 0 -> return@forEachIndexed   // fuel header
+            skipHeader -> {
+                skipHeader = false
+                return@forEachIndexed             // section header
+            }
+        }
+
+        val tokens = parseCsvLine(line)
+
+        // Read before any date handling: a car row's first field is a name,
+        // and treating it as a date would count the row as unreadable.
+        if (section == Section.CAR) {
+            if (tokens.size >= 4 && tokens[0].isNotBlank()) {
+                car = ImportedCar(
+                    name = tokens[0],
+                    fuelType = tokens[1].ifBlank { "Petrol" },
+                    secondaryFuelType = tokens[2].ifBlank { null },
+                    initialOdometer = tokens[3].toIntOrNull() ?: 0,
+                    themeColor = tokens.getOrNull(4)?.toLongOrNull()
+                )
+            } else {
+                unreadable++
+            }
+            return@forEachIndexed
+        }
+
+        val date = tokens.firstOrNull()?.let(parseDate)
+        if (date == null) {
+            unreadable++
+            return@forEachIndexed
+        }
+
+        if (section == Section.EXPENSES) {
+            val cost = tokens.getOrNull(3)?.toDoubleOrNull() ?: 0.0
+            if (tokens.size >= 5 && cost > 0) {
+                expenses.add(
+                    Expense(
+                        carId = 0,
+                        dateMillis = date,
+                        category = tokens[1],
+                        description = tokens[2],
+                        costSek = cost,
+                        isMonthly = tokens[4].toBooleanStrictOrNull() ?: false
+                    )
+                )
+            } else {
+                unreadable++
+            }
+        } else {
+            val amount = tokens.getOrNull(3)?.toDoubleOrNull() ?: 0.0
+            if (tokens.size >= 7 && amount > 0) {
+                fuelUps.add(
+                    FuelUp(
+                        carId = 0,
+                        fuelTypeUsed = tokens[2],
+                        dateMillis = date,
+                        odometerKm = tokens[1].toIntOrNull() ?: 0,
+                        litersFilled = amount,
+                        pricePerLiterSek = tokens[4].toDoubleOrNull() ?: 0.0,
+                        totalCostSek = tokens[5].toDoubleOrNull() ?: 0.0,
+                        missedPrevious = tokens[6].toBooleanStrictOrNull() ?: false
+                    )
+                )
+            } else {
+                unreadable++
+            }
+        }
+    }
+
+    return ParsedBackup(car, fuelUps, expenses, unreadable)
+}
