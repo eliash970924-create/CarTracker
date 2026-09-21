@@ -122,14 +122,9 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
     var inputMode by remember { mutableIntStateOf(0) }
     var editingFuelUp by remember { mutableStateOf<FuelUp?>(null) }
 
-    var expDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var expCategoryExpanded by remember { mutableStateOf(false) }
-    val expCategories = listOf("Maintenance", "Tires", "Insurance", "Parking", "Wash", "Tolls", "Other")
-    var expCategory by remember { mutableStateOf(expCategories[0]) }
-    var expDesc by remember { mutableStateOf("") }
-    var expCost by remember { mutableStateOf("") }
-    var showExpDatePicker by remember { mutableStateOf(false) }
-    var expIsMonthly by remember { mutableStateOf(false) }
+    // Held by the screen rather than by ExpensesTab, so a half-filled form
+    // survives leaving the tab and coming back, as it did before.
+    val expenseForm = rememberExpenseFormState()
 
     var entryDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var showMainDatePicker by remember { mutableStateOf(false) }
@@ -311,11 +306,6 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
         DatePickerDialog(onDismissRequest = { showMainDatePicker = false }, confirmButton = { TextButton(onClick = { dpState.selectedDateMillis?.let { entryDateMillis = it }; showMainDatePicker = false }) { Text("OK") } }, dismissButton = { TextButton(onClick = { showMainDatePicker = false }) { Text("Cancel") } }) { DatePicker(state = dpState) }
     }
 
-    if (showExpDatePicker) {
-        val dpState = rememberDatePickerState(initialSelectedDateMillis = expDateMillis)
-        DatePickerDialog(onDismissRequest = { showExpDatePicker = false }, confirmButton = { TextButton(onClick = { dpState.selectedDateMillis?.let { expDateMillis = it }; showExpDatePicker = false }) { Text("OK") } }, dismissButton = { TextButton(onClick = { showExpDatePicker = false }) { Text("Cancel") } }) { DatePicker(state = dpState) }
-    }
-
     if (showAddCarDialog || editingCar != null) {
         val isEditMode = editingCar != null
         var expanded1 by remember { mutableStateOf(false) }
@@ -408,64 +398,28 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
         )
     }
 
-    if (editingFuelUp != null) {
-        var editOdometer by remember { mutableStateOf(if (editingFuelUp!!.odometerKm == 0) "" else editingFuelUp!!.odometerKm.toString()) }
-        var editLiters by remember { mutableStateOf(editingFuelUp!!.litersFilled.toString().replace('.', ',')) }
-        var editPrice by remember { mutableStateOf(editingFuelUp!!.pricePerLiterSek.toString().replace('.', ',')) }
-        var editMissed by remember { mutableStateOf(editingFuelUp!!.missedPrevious) }
-        var editExpandedFuel by remember { mutableStateOf(false) }
-        var editFuelType by remember { mutableStateOf(editingFuelUp!!.fuelTypeUsed) }
-        var editDateMillis by remember { mutableLongStateOf(editingFuelUp!!.dateMillis) }
-        var showEditDatePicker by remember { mutableStateOf(false) }
-
-        if (showEditDatePicker) {
-            val dpState = rememberDatePickerState(initialSelectedDateMillis = editDateMillis)
-            DatePickerDialog(onDismissRequest = { showEditDatePicker = false }, confirmButton = { TextButton(onClick = { dpState.selectedDateMillis?.let { editDateMillis = it }; showEditDatePicker = false }) { Text("OK") } }) { DatePicker(state = dpState) }
-        }
-
-        AlertDialog(
-            onDismissRequest = { editingFuelUp = null },
-            title = { Text("Edit Fill-up") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ExposedDropdownMenuBox(expanded = editExpandedFuel, onExpandedChange = { editExpandedFuel = !editExpandedFuel }, modifier = Modifier.weight(1f)) {
-                            OutlinedTextField(value = editFuelType, onValueChange = {}, readOnly = true, label = { Text("Fuel") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(editExpandedFuel) }, colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(), modifier = Modifier.menuAnchor().fillMaxWidth())
-                            ExposedDropdownMenu(expanded = editExpandedFuel, onDismissRequest = { editExpandedFuel = false }) { availableFuels.forEach { ft -> DropdownMenuItem(text = { Text(ft) }, onClick = { editFuelType = ft; editExpandedFuel = false }) } }
-                        }
-                        OutlinedTextField(value = editLiters, onValueChange = { editLiters = it }, label = { Text(if (editFuelType == "Electric") "kWh" else "Liters") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(value = editOdometer, onValueChange = { editOdometer = it }, label = { Text("Odo (km)") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-                        OutlinedTextField(value = editPrice, onValueChange = { editPrice = it }, label = { Text("Price (SEK)") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        OutlinedTextField(value = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(editDateMillis)), onValueChange = {}, readOnly = true, label = { Text("Date") }, modifier = Modifier.weight(1f), trailingIcon = { IconButton(onClick = { showEditDatePicker = true }) { Icon(Icons.Default.DateRange, null) } })
-                        if (fuelHistory.lastOrNull()?.id != editingFuelUp?.id) {
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                Checkbox(checked = editMissed, onCheckedChange = { editMissed = it })
-                                Text("Missed previous fill-up", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            }
-                        } else Spacer(modifier = Modifier.weight(1f))
-                    }
+    editingFuelUp?.let { editing ->
+        EditFuelUpDialog(
+            fuelUp = editing,
+            availableFuels = availableFuels,
+            // The oldest fill-up has no previous one to have missed.
+            canMarkMissed = fuelHistory.lastOrNull()?.id != editing.id,
+            onSave = { updated ->
+                viewModel.updateFuelEntry(updated)
+                editingFuelUp = null
+            },
+            onDelete = {
+                // The entry before this one now covers its distance too, so it
+                // has to be marked as following a gap - otherwise that distance
+                // is credited to a tankful that never covered it.
+                val index = fuelHistory.indexOfFirst { it.id == editing.id }
+                if (index > 0) {
+                    viewModel.updateFuelEntry(fuelHistory[index - 1].copy(missedPrevious = true))
                 }
+                viewModel.deleteFuelEntry(editing)
+                editingFuelUp = null
             },
-            confirmButton = {
-                Button(onClick = {
-                    val l = editLiters.replace(',', '.').toDoubleOrNull() ?: 0.0
-                    val p = editPrice.replace(',', '.').toDoubleOrNull() ?: 0.0
-                    val o = editOdometer.toIntOrNull() ?: 0
-                    if (l > 0) { viewModel.updateFuelEntry(editingFuelUp!!.copy(dateMillis = editDateMillis, odometerKm = o, litersFilled = l, pricePerLiterSek = p, totalCostSek = l * p, missedPrevious = editMissed, fuelTypeUsed = editFuelType)); editingFuelUp = null }
-                }) { Text("Save") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    val idx = fuelHistory.indexOfFirst { it.id == editingFuelUp!!.id }
-                    if (idx > 0) viewModel.updateFuelEntry(fuelHistory[idx - 1].copy(missedPrevious = true))
-                    viewModel.deleteFuelEntry(editingFuelUp!!)
-                    editingFuelUp = null
-                }) { Text("Delete", color = Color.Red) }
-            }
+            onDismiss = { editingFuelUp = null }
         )
     }
 
@@ -595,88 +549,25 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                     Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.TopCenter) { Text("Press the + to add your car.", modifier = Modifier.padding(top = 150.dp)) }
                 } else {
                     when (currentTab) {
-                        "Charts" -> {
-                            val chartSeries = remember(fuelHistory, selectedCar) {
-                                selectedCar?.let { calculateChartSeries(it, fuelHistory) }
-                                    ?: ChartSeries(emptyList(), emptyList(), emptyList(), emptyList())
-                            }
+                        "Charts" -> ChartsTab(
+                            car = selectedCar!!,
+                            fuelHistory = fuelHistory,
+                            subTab = chartSubTab,
+                            onSubTabChange = { chartSubTab = it },
+                            primaryColor = activePrimaryColor,
+                            modifier = Modifier.fillMaxSize().padding(paddingValues)
+                        )
 
-                            Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-                                TabRow(selectedTabIndex = if (chartSubTab == "Price") 0 else 1) {
-                                    Tab(selected = chartSubTab == "Price", onClick = { chartSubTab = "Price" }, text = { Text("Fuel Price") })
-                                    Tab(selected = chartSubTab == "Consumption", onClick = { chartSubTab = "Consumption" }, text = { Text("Consumption") })
-                                }
-                                LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                                    if (chartSubTab == "Price") {
-                                        val pPrices = chartSeries.primaryPrices
-                                        val sPrices = chartSeries.secondaryPrices
-                                        if (pPrices.size >= 2) { item { val unit = if (selectedCar!!.fuelType == "Electric") "kWh" else "L"; NativeLineChart(data = pPrices, title = "${selectedCar!!.fuelType} Price (SEK/$unit)", lineColor = activePrimaryColor) } }
-                                        else { item { Text("Add at least 2 ${selectedCar!!.fuelType} entries to generate a chart.", color = Color.Gray) } }
-                                        if (selectedCar!!.secondaryFuelType != null) { if (sPrices.size >= 2) { item { val unit = if (selectedCar!!.secondaryFuelType == "Electric") "kWh" else "L"; NativeLineChart(data = sPrices, title = "${selectedCar!!.secondaryFuelType} Price (SEK/$unit)", lineColor = Color(0xFF1976D2)) } } }
-                                    } else {
-                                        val pCons = chartSeries.primaryConsumption
-                                        val sCons = chartSeries.secondaryConsumption
-                                        if (pCons.size >= 2) { item { val unit = if (selectedCar!!.fuelType == "Electric") "kWh" else "L"; NativeLineChart(data = pCons, title = "${selectedCar!!.fuelType} Consumption ($unit/100km)", lineColor = activePrimaryColor) } }
-                                        else { item { Text("Add at least 2 consecutive ${selectedCar!!.fuelType} entries to generate a chart.", color = Color.Gray) } }
-                                        if (selectedCar!!.secondaryFuelType != null) { if (sCons.size >= 2) { item { val unit = if (selectedCar!!.secondaryFuelType == "Electric") "kWh" else "L"; NativeLineChart(data = sCons, title = "${selectedCar!!.secondaryFuelType} Consumption ($unit/100km)", lineColor = Color(0xFFFBC02D)) } } }
-                                    }
-                                }
-                            }
-                        }
-
-                        "Expenses" -> {
-                            val totalExp = remember(expenseHistory) { expenseHistory.sumOf { it.costSek } }
-                            Column(modifier = Modifier.fillMaxSize().padding(paddingValues).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                    OutlinedTextField(value = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(expDateMillis)), onValueChange = {}, readOnly = true, label = { Text("Date") }, modifier = Modifier.weight(1f), trailingIcon = { IconButton(onClick = { showExpDatePicker = true }) { Icon(Icons.Default.DateRange, null) } })
-                                    ExposedDropdownMenuBox(expanded = expCategoryExpanded, onExpandedChange = { expCategoryExpanded = !expCategoryExpanded }, modifier = Modifier.weight(1f)) {
-                                        OutlinedTextField(value = expCategory, onValueChange = {}, readOnly = true, label = { Text("Category") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expCategoryExpanded) }, modifier = Modifier.menuAnchor().fillMaxWidth())
-                                        ExposedDropdownMenu(expanded = expCategoryExpanded, onDismissRequest = { expCategoryExpanded = false }) { expCategories.forEach { cat -> DropdownMenuItem(text = { Text(cat) }, onClick = { expCategory = cat; expCategoryExpanded = false }) } }
-                                    }
-                                }
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    OutlinedTextField(value = expDesc, onValueChange = { expDesc = it }, label = { Text("Description (Optional)") }, modifier = Modifier.weight(1.5f), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, capitalization = KeyboardCapitalization.Sentences))
-                                    OutlinedTextField(value = expCost, onValueChange = { expCost = it }, label = { Text("Cost (SEK)") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                    Checkbox(checked = expIsMonthly, onCheckedChange = { expIsMonthly = it })
-                                    Text("Repeats automatically every month", style = MaterialTheme.typography.bodyMedium)
-                                }
-                                Button(onClick = {
-                                    val cost = expCost.replace(',', '.').toDoubleOrNull() ?: 0.0
-                                    if (cost > 0) { viewModel.saveExpense(selectedCar!!.id, expDateMillis, expCategory, expDesc, cost, expIsMonthly); expDesc = ""; expCost = ""; expIsMonthly = false; expDateMillis = System.currentTimeMillis() }
-                                }, modifier = Modifier.fillMaxWidth()) { Text("Save Expense") }
-
-                                HorizontalDivider()
-
-                                if (expenseHistory.isNotEmpty()) {
-                                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer), modifier = Modifier.fillMaxWidth()) {
-                                        Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text("Total Non-Fuel Expenses", style = MaterialTheme.typography.labelMedium)
-                                            Text("%.2f SEK".format(svLocale, totalExp), fontWeight = FontWeight.Bold, fontSize = 20.sp, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                                        }
-                                    }
-                                }
-
-                                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxSize()) {
-                                    itemsIndexed(items = expenseHistory, key = { _, item -> item.id }) { _, expense ->
-                                        Card(modifier = Modifier.fillMaxWidth().combinedClickable(onClick = {}, onLongClick = { viewModel.deleteExpense(expense) }), elevation = CardDefaults.cardElevation(2.dp)) {
-                                            Column(modifier = Modifier.padding(12.dp)) {
-                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                                    Text(SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(expense.dateMillis)), style = MaterialTheme.typography.labelMedium)
-                                                    Text(if (expense.isMonthly) "🔄 ${expense.category}" else expense.category, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
-                                                }
-                                                Spacer(modifier = Modifier.height(4.dp))
-                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                                    Text(expense.description.ifEmpty { "No description" }, style = MaterialTheme.typography.bodyMedium, color = if(expense.description.isEmpty()) Color.Gray else Color.Unspecified)
-                                                    Text("${"%.2f".format(svLocale, expense.costSek)} SEK", style = MaterialTheme.typography.titleMedium)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        "Expenses" -> ExpensesTab(
+                            expenses = expenseHistory,
+                            form = expenseForm,
+                            currencyLocale = svLocale,
+                            onSave = { date, category, description, cost, isMonthly ->
+                                viewModel.saveExpense(selectedCar!!.id, date, category, description, cost, isMonthly)
+                            },
+                            onDelete = { viewModel.deleteExpense(it) },
+                            modifier = Modifier.fillMaxSize().padding(paddingValues)
+                        )
 
                         "Entries" -> {
                             val dashboardStats = remember(fuelHistory, selectedCar) {
