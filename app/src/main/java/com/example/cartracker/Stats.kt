@@ -135,3 +135,35 @@ fun calculateChartSeries(car: Car, fuelUps: List<FuelUp>): ChartSeries {
         secondaryConsumption = secondaryConsumption
     )
 }
+
+/**
+ * Consumption for one fill-up, as shown beside it in the history list, or null
+ * when it cannot be worked out.
+ *
+ * Measured against the previous fill-up of the same fuel, falling back to the
+ * car's initial odometer when there is no earlier one. Returns null for a
+ * fill-up with no odometer reading, one marked as following a missed fill-up,
+ * or one that did not advance the odometer - in each case the distance the
+ * fuel covered is unknown, and a figure would be a guess presented as fact.
+ *
+ * [olderEntries] are the entries before this one, newest first, matching the
+ * order the history list holds.
+ */
+fun consumptionForEntry(
+    entry: FuelUp,
+    olderEntries: List<FuelUp>,
+    initialOdometer: Int
+): Double? {
+    if (entry.odometerKm <= 0 || entry.missedPrevious) return null
+
+    val previousOdometer = olderEntries
+        .firstOrNull { it.odometerKm > 0 && it.fuelTypeUsed == entry.fuelTypeUsed }
+        ?.odometerKm
+        ?: initialOdometer
+    if (previousOdometer <= 0) return null
+
+    val distance = entry.odometerKm - previousOdometer
+    if (distance <= 0) return null
+
+    return (entry.litersFilled / distance) * 100
+}

@@ -11,18 +11,12 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,10 +28,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -80,20 +71,16 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
     LaunchedEffect(selectedCar) { selectedCar?.let { viewModel.checkRecurringExpenses(it.id) } }
     LaunchedEffect(cars) { if (selectedCar == null && cars.isNotEmpty()) selectedCar = cars.first() }
 
-    var distanceInput by remember { mutableStateOf("") }
-    var liters by remember { mutableStateOf("") }
-    var price by remember { mutableStateOf("") }
-    var missedPrevious by remember { mutableStateOf(false) }
-    var inputMode by remember { mutableIntStateOf(0) }
     var editingFuelUp by remember { mutableStateOf<FuelUp?>(null) }
+
+    // Owned here, like the expense form, so a half-filled entry survives
+    // leaving the tab.
+    val entryForm = rememberFuelEntryFormState()
 
     // Held by the screen rather than by ExpensesTab, so a half-filled form
     // survives leaving the tab and coming back, as it did before.
     val expenseForm = rememberExpenseFormState()
 
-    var entryDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var showMainDatePicker by remember { mutableStateOf(false) }
-    var expandedEntryFuel by remember { mutableStateOf(false) }
 
     val availableFuels = remember(selectedCar) { listOfNotNull(selectedCar?.fuelType, selectedCar?.secondaryFuelType).ifEmpty { listOf("Petrol") } }
     var entryFuelType by remember(selectedCar) {
@@ -264,11 +251,6 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                 } catch (e: Exception) { launch(Dispatchers.Main) { Toast.makeText(context, "Import failed", Toast.LENGTH_LONG).show() } }
             }
         }
-    }
-
-    if (showMainDatePicker) {
-        val dpState = rememberDatePickerState(initialSelectedDateMillis = entryDateMillis)
-        DatePickerDialog(onDismissRequest = { showMainDatePicker = false }, confirmButton = { TextButton(onClick = { dpState.selectedDateMillis?.let { entryDateMillis = it }; showMainDatePicker = false }) { Text("OK") } }, dismissButton = { TextButton(onClick = { showMainDatePicker = false }) { Text("Cancel") } }) { DatePicker(state = dpState) }
     }
 
     if (showAddCarDialog || editingCar != null) {
@@ -468,134 +450,27 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                             modifier = Modifier.fillMaxSize().padding(paddingValues)
                         )
 
-                        "Entries" -> {
-                            val dashboardStats = remember(fuelHistory, selectedCar) {
-                                selectedCar?.let { calculateFuelStats(it, fuelHistory) }
-                            }
-
-                            Column(modifier = Modifier.fillMaxSize().padding(paddingValues).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    ExposedDropdownMenuBox(expanded = expandedEntryFuel, onExpandedChange = { expandedEntryFuel = !expandedEntryFuel }, modifier = Modifier.weight(1f)) {
-                                        OutlinedTextField(value = entryFuelType, onValueChange = {}, readOnly = true, label = { Text("Fuel") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedEntryFuel) }, modifier = Modifier.menuAnchor().fillMaxWidth())
-                                        ExposedDropdownMenu(expanded = expandedEntryFuel, onDismissRequest = { expandedEntryFuel = false }) {
-                                            availableFuels.forEach { ft ->
-                                                DropdownMenuItem(
-                                                    text = { Text(ft) },
-                                                    onClick = {
-                                                        entryFuelType = ft
-                                                        selectedCar?.let { prefs.edit().putString("last_fuel_${it.id}", ft).apply() }
-                                                        expandedEntryFuel = false
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
-                                    OutlinedTextField(value = liters, onValueChange = { liters = it }, label = { Text(if (entryFuelType == "Electric") "kWh" else "Liters") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
-                                }
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    OutlinedTextField(value = distanceInput, onValueChange = { distanceInput = it }, label = { Text(if (inputMode == 0) "Odo (km)" else "Trip (km)") }, placeholder = { Text("Optional") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f), trailingIcon = { IconButton(onClick = { inputMode = if (inputMode == 0) 1 else 0 }) { Icon(Icons.Default.SwapVert, null) } })
-                                    OutlinedTextField(value = price, onValueChange = { price = it }, label = { Text("Price per unit (SEK)") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
-                                }
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                    OutlinedTextField(value = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(entryDateMillis)), onValueChange = {}, readOnly = true, label = { Text("Date") }, modifier = Modifier.weight(1f), trailingIcon = { IconButton(onClick = { showMainDatePicker = true }) { Icon(Icons.Default.DateRange, null) } })
-                                    if (fuelHistory.isNotEmpty()) {
-                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                            Checkbox(checked = missedPrevious, onCheckedChange = { missedPrevious = it })
-                                            Text("Missed previous", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                        }
-                                    } else Spacer(modifier = Modifier.weight(1f))
-                                }
-
-                                Button(onClick = {
-                                    val l = liters.replace(',', '.').toDoubleOrNull() ?: 0.0
-                                    val p = price.replace(',', '.').toDoubleOrNull() ?: 0.0
-                                    val rawDist = distanceInput.replace(',', '.').toDoubleOrNull()
-                                    val finalOdo = if (rawDist == null) 0 else if (inputMode == 1) {
-                                        val lastKnownOdo = fuelHistory.firstOrNull { it.odometerKm > 0 && it.fuelTypeUsed == entryFuelType }?.odometerKm ?: selectedCar!!.initialOdometer
-                                        lastKnownOdo + rawDist.toInt()
-                                    } else rawDist.toInt()
-
-                                    if (l > 0) {
-                                        viewModel.saveFuelEntry(selectedCar!!.id, entryFuelType, entryDateMillis, finalOdo, l, p, l * p, missedPrevious)
-                                        prefs.edit().putString("last_fuel_${selectedCar!!.id}", entryFuelType).apply()
-                                        distanceInput = ""; liters = ""; price = ""; missedPrevious = false; entryDateMillis = System.currentTimeMillis()
-                                    }
-                                }, modifier = Modifier.fillMaxWidth()) { Text("Save Entry") }
-
-                                HorizontalDivider()
-
-                                if (dashboardStats != null) {
-                                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                                        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                    Text("${selectedCar!!.fuelType} Avg", style = MaterialTheme.typography.labelMedium)
-                                                    val pUnit = if (selectedCar!!.fuelType == "Electric") "kWh" else "L"
-                                                    Text("%.2f $pUnit/100km".format(svLocale, dashboardStats.avgPrimary), fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                                    Text("%.2f kr/mil".format(svLocale, dashboardStats.costPrimary), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f))
-                                                }
-                                                if (selectedCar!!.secondaryFuelType != null) {
-                                                    VerticalDivider(modifier = Modifier.height(50.dp))
-                                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                        Text("${selectedCar!!.secondaryFuelType} Avg", style = MaterialTheme.typography.labelMedium)
-                                                        val sUnit = if (selectedCar!!.secondaryFuelType == "Electric") "kWh" else "L"
-                                                        Text("%.2f $sUnit/100km".format(svLocale, dashboardStats.avgSecondary), fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                                        Text("%.2f kr/mil".format(svLocale, dashboardStats.costSecondary), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f))
-                                                    }
-                                                }
-                                            }
-                                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                                                val costLabel = if (selectedCar!!.secondaryFuelType != null) "True Blended Cost: " else "Total Cost: "
-                                                Text(costLabel, style = MaterialTheme.typography.bodyMedium)
-                                                Text("%.2f kr/mil".format(svLocale, dashboardStats.blendedCost), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 16.sp)
-                                            }
-                                        }
-                                    }
-                                }
-
-                                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxSize()) {
-                                    itemsIndexed(items = fuelHistory, key = { _, item -> item.id }) { index, fuelUp ->
-                                        var currentCons: Double? = null
-                                        val olderEntries = fuelHistory.subList(index + 1, fuelHistory.size)
-                                        val prevOdo = olderEntries.firstOrNull { it.odometerKm > 0 && it.fuelTypeUsed == fuelUp.fuelTypeUsed }?.odometerKm ?: selectedCar!!.initialOdometer
-
-                                        if (fuelUp.odometerKm > 0 && prevOdo > 0) {
-                                            val dist = fuelUp.odometerKm - prevOdo
-                                            if (dist > 0 && !fuelUp.missedPrevious) currentCons = (fuelUp.litersFilled / dist) * 100
-                                        }
-
-                                        Card(modifier = Modifier.fillMaxWidth().combinedClickable(onClick = {}, onLongClick = { editingFuelUp = fuelUp }), elevation = CardDefaults.cardElevation(2.dp)) {
-                                            Column(modifier = Modifier.padding(12.dp)) {
-                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                                    Text(SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(fuelUp.dateMillis)), style = MaterialTheme.typography.labelMedium)
-                                                    Column(horizontalAlignment = Alignment.End) {
-                                                        val unit = if (fuelUp.fuelTypeUsed == "Electric") "kWh" else "L"
-                                                        val consText = when {
-                                                            fuelUp.missedPrevious -> "Missed Previous"
-                                                            fuelUp.odometerKm == 0 -> "No Odo Data"
-                                                            currentCons != null -> "%.2f $unit/100km".format(svLocale, currentCons)
-                                                            else -> "First Entry"
-                                                        }
-                                                        val consColor = if (fuelUp.missedPrevious || fuelUp.odometerKm == 0) Color.Gray else MaterialTheme.colorScheme.primary
-                                                        Text(consText, color = consColor, style = MaterialTheme.typography.labelLarge)
-                                                        Text(if (fuelUp.odometerKm == 0) "Odometer: Data missing" else "${fuelUp.odometerKm} km", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                                    }
-                                                }
-                                                Spacer(modifier = Modifier.height(4.dp))
-                                                val formattedCost = "%.2f".format(svLocale, fuelUp.totalCostSek)
-                                                val formattedLiters = "%.2f".format(svLocale, fuelUp.litersFilled)
-                                                val formattedPrice = "%.2f".format(svLocale, fuelUp.pricePerLiterSek)
-                                                val unitShort = if (fuelUp.fuelTypeUsed == "Electric") "kWh" else "L"
-
-                                                Text("$formattedCost SEK", style = MaterialTheme.typography.titleMedium)
-                                                Text("$formattedLiters $unitShort at $formattedPrice kr/$unitShort", style = MaterialTheme.typography.bodyMedium)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        "Entries" -> EntriesTab(
+                            car = selectedCar!!,
+                            fuelHistory = fuelHistory,
+                            form = entryForm,
+                            fuelType = entryFuelType,
+                            onFuelTypeChange = { fuel ->
+                                entryFuelType = fuel
+                                selectedCar?.let { prefs.edit().putString("last_fuel_${it.id}", fuel).apply() }
+                            },
+                            availableFuels = availableFuels,
+                            currencyLocale = svLocale,
+                            onSave = { fuel, dateMillis, odometer, amount, price, missed ->
+                                viewModel.saveFuelEntry(
+                                    selectedCar!!.id, fuel, dateMillis, odometer,
+                                    amount, price, amount * price, missed
+                                )
+                                prefs.edit().putString("last_fuel_${selectedCar!!.id}", fuel).apply()
+                            },
+                            onEditEntry = { editingFuelUp = it },
+                            modifier = Modifier.fillMaxSize().padding(paddingValues)
+                        )
                     }
                 }
             }
