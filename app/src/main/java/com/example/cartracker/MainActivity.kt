@@ -8,11 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
@@ -21,13 +17,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
@@ -329,83 +321,35 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
         ModalNavigationDrawer(
             drawerState = drawerState,
             drawerContent = {
-                ModalDrawerSheet(modifier = Modifier.width(300.dp)) {
-                    Text("Your Garage", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.headlineMedium)
-                    HorizontalDivider()
-
-                    cars.forEach { car ->
-                        val fuelDisplay = if (car.secondaryFuelType != null) "${car.fuelType} / ${car.secondaryFuelType}" else car.fuelType
-                        val isSelected = car.id == selectedCar?.id
-                        val containerColor = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent
-                        val contentColor = if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-
-                        Surface(
-                            modifier = Modifier
-                                .padding(horizontal = 12.dp, vertical = 4.dp)
-                                .fillMaxWidth()
-                                .clip(CircleShape)
-                                .clickable { selectedCar = car; scope.launch { drawerState.close() } },
-                            color = containerColor,
-                            contentColor = contentColor
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(start = 0.dp, end = 16.dp, top = 0.dp, bottom = 0.dp)
-                            ) {
-                                val bmp = remember(car.imageUri) {
-                                    try { loadCarPhoto(context, car.imageUri)?.asImageBitmap() } catch (e: Exception) { null }
-                                }
-                                if (bmp != null) {
-                                    Image(bitmap = bmp, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(56.dp).clip(CircleShape))
-                                    Spacer(modifier = Modifier.width(16.dp))
-                                }
-                                else {
-                                    Box(modifier = Modifier.size(56.dp).clip(CircleShape).background(car.themeColor?.let { Color(it) } ?: MaterialTheme.colorScheme.primary))
-                                    Spacer(modifier = Modifier.width(16.dp))
-                                }
-
-                                Column(verticalArrangement = Arrangement.Center) {
-                                    Text(car.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                    Text(fuelDisplay, style = MaterialTheme.typography.bodyMedium)
-                                }
-                            }
-                        }
+                GarageDrawer(
+                    cars = cars,
+                    selectedCar = selectedCar,
+                    currentTab = currentTab,
+                    hasDataToExport = fuelHistory.isNotEmpty() || expenseHistory.isNotEmpty(),
+                    onSelectCar = { car ->
+                        selectedCar = car
+                        scope.launch { drawerState.close() }
+                    },
+                    // Deliberately leaves the drawer open, as before: the
+                    // dialog opens over it.
+                    onAddCar = {
+                        carForm.reset()
+                        showAddCarDialog = true
+                    },
+                    onSelectTab = { tab ->
+                        currentTab = tab
+                        scope.launch { drawerState.close() }
+                    },
+                    onImport = {
+                        importLauncher.launch(arrayOf("*/*"))
+                        scope.launch { drawerState.close() }
+                    },
+                    onExport = {
+                        val safeName = selectedCar!!.name.replace(" ", "_")
+                        exportLauncher.launch("${safeName}_History.csv")
+                        scope.launch { drawerState.close() }
                     }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(
-                        onClick = {
-                            carForm.reset()
-                            showAddCarDialog = true
-                        },
-                        modifier = Modifier.padding(horizontal = 12.dp).fillMaxWidth()
-                    ) { Text("Add New Car") }
-
-                    if (selectedCar != null) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        HorizontalDivider()
-                        Text("Views", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                        NavigationDrawerItem(label = { Text("Log & History") }, selected = currentTab == "Entries", onClick = { currentTab = "Entries"; scope.launch { drawerState.close() } }, modifier = Modifier.padding(horizontal = 12.dp))
-                        NavigationDrawerItem(label = { Text("Service & Expenses") }, selected = currentTab == "Expenses", onClick = { currentTab = "Expenses"; scope.launch { drawerState.close() } }, modifier = Modifier.padding(horizontal = 12.dp))
-                        NavigationDrawerItem(label = { Text("Charts & Graphs") }, selected = currentTab == "Charts", onClick = { currentTab = "Charts"; scope.launch { drawerState.close() } }, modifier = Modifier.padding(horizontal = 12.dp))
-                    }
-
-                    Spacer(modifier = Modifier.weight(1f))
-                    HorizontalDivider()
-                    Text("Data Management", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                    // Offered with no car selected too: a backup carries its
-                    // own car details, so restoring onto a fresh install no
-                    // longer means recreating the car by hand first.
-                    NavigationDrawerItem(
-                        label = { Text(if (selectedCar != null) "Import from file" else "Import a car from file") },
-                        selected = false,
-                        onClick = { importLauncher.launch(arrayOf("*/*")); scope.launch { drawerState.close() } },
-                        modifier = Modifier.padding(horizontal = 12.dp)
-                    )
-                    if (selectedCar != null && (fuelHistory.isNotEmpty() || expenseHistory.isNotEmpty())) {
-                        NavigationDrawerItem(label = { Text("Export ${selectedCar!!.name} to CSV") }, selected = false, onClick = { val safeName = selectedCar!!.name.replace(" ", "_"); exportLauncher.launch("${safeName}_History.csv"); scope.launch { drawerState.close() } }, modifier = Modifier.padding(horizontal = 12.dp))
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
+                )
             }
         ) {
             Scaffold(
