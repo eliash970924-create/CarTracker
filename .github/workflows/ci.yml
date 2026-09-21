@@ -30,10 +30,14 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      # compileSdk 36 is newer than the runner image ships, so make sure the
-      # SDK tooling is present and its licences accepted before Gradle asks.
-      - name: Set up Android SDK
+      # Present for the licence acceptance only. packages must be empty: the
+      # action otherwise installs the legacy "tools" package by default, which
+      # no longer exists in the SDK repository and fails the step outright.
+      # Gradle then downloads compileSdk 36 itself, licences already accepted.
+      - name: Accept Android SDK licences
         uses: android-actions/setup-android@v3
+        with:
+          packages: ''
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
