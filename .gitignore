@@ -1,12 +1,12 @@
 *.iml
 .gradle
 /local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
+
+# Android Studio / IntelliJ project state. Machine-specific (JDK paths,
+# emulators, last deploy target) and rewritten on almost every IDE action,
+# so it churns the working tree without ever being useful in history.
+# The IDE regenerates it on open.
+/.idea/
 .DS_Store
 /build
 /captures
