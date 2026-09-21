@@ -1,6 +1,7 @@
 package com.example.cartracker
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -29,7 +30,12 @@ class FuelViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateCar(car: Car) {
         viewModelScope.launch(Dispatchers.IO) {
+            val previous = carDao.getCarById(car.id)
             carDao.updateCar(car)
+            // A replaced photo would otherwise sit in app storage for good.
+            if (previous != null && previous.imageUri != car.imageUri) {
+                deleteCarPhoto(getApplication<Application>(), previous.imageUri)
+            }
         }
     }
 
@@ -37,6 +43,28 @@ class FuelViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteCar(car: Car) {
         viewModelScope.launch(Dispatchers.IO) {
             carDao.deleteCar(car)
+            deleteCarPhoto(getApplication<Application>(), car.imageUri)
+        }
+    }
+
+    /**
+     * Copies photos still held as picker URIs into app storage, once.
+     *
+     * Without this only newly picked photos would be safe, and the ones
+     * already on the car would still vanish on the next reinstall. A copy
+     * that fails means the grant has already gone; the row is left as it is
+     * rather than cleared, since clearing would destroy the only record that
+     * a photo was ever chosen.
+     */
+    fun adoptLegacyPhotos() {
+        viewModelScope.launch(Dispatchers.IO) {
+            carDao.getCarsList().forEach { car ->
+                val stored = car.imageUri
+                if (stored != null && isExternalPhotoReference(stored)) {
+                    val adopted = copyPhotoIntoAppStorage(getApplication<Application>(), Uri.parse(stored))
+                    if (adopted != null) carDao.updateCar(car.copy(imageUri = adopted))
+                }
+            }
         }
     }
 
