@@ -16,7 +16,7 @@ and consumption per 100 km.
 - **Expenses** by category (Maintenance, Tires, Insurance, Parking, Wash,
   Tolls, Other), with recurring monthly costs filled in automatically
 - **Charts** for fuel price and consumption over time
-- **CSV backup** that exports and restores everything, including the car
+- **Backup** that exports and restores everything: history, the car, and the photo
 
 Fuel types: Petrol, Diesel, Electric, Gas, E85.
 
@@ -42,16 +42,31 @@ Single-Activity Jetpack Compose UI over a Room database.
 
 | File | Role |
 | --- | --- |
-| `MainActivity.kt` | the whole UI: drawer, dialogs, and the Log & History, Service & Expenses and Charts & Graphs tabs |
-| `FuelViewModel.kt` | database access and the import/export operations |
+| `MainActivity.kt` | assembles the screen and owns the state the pieces share |
+| `EntriesTab.kt` | the fill-up form, the dashboard figures and the history list |
+| `ExpensesTab.kt` | the expense form, total and history |
+| `ChartsTab.kt` | fuel price and consumption charts |
+| `AddEditCarDialog.kt` | the add/edit car form |
+| `EditFuelUpDialog.kt` | editing or deleting one fill-up |
+| `GarageDrawer.kt` | the garage, view switcher and backup actions |
+| `FuelViewModel.kt` | database access, import and the recurring-expense fill-in |
 | `Stats.kt` | consumption and cost arithmetic, and the chart series |
-| `CsvBackup.kt` | backup file format, escaping and parsing |
+| `RecurringExpenses.kt` | which months of a monthly expense are missing |
+| `CsvBackup.kt` | the backup file format: writing, escaping and parsing |
+| `BackupArchive.kt` | the zip backup, and telling a zip from a bare CSV |
 | `CarPhotos.kt` | car photos in app-private storage |
 | `Migrations.kt` | schema migrations |
 | `AppDatabase.kt`, `*Dao.kt`, `Car/FuelUp/Expense.kt` | Room |
 
-`Stats.kt` holds the calculations the app exists to produce, kept as pure
-functions so they can be tested — see `app/src/test/.../StatsTest.kt`.
+The arithmetic and the file parsing are kept out of the composables as pure
+functions, so the things most able to be quietly wrong can be tested. See
+`StatsTest`, `RecurringExpensesTest` and `BackupParseTest` under
+`app/src/test/`; `./gradlew test` runs them.
+
+A form's contents belong to `MainActivity` rather than to the tab or dialog
+showing them, as a state holder passed down. A composable is disposed when
+its tab or dialog goes away, so holding the state there would silently clear
+a half-filled form.
 
 ## Decisions worth knowing
 
@@ -75,6 +90,12 @@ dashboard measures from the car's initial odometer, so the first fill-up
 counts. The charts start from the first fill-up, so it plots no point — a
 chart point needs a measured interval between two readings. Both are
 intentional.
+
+**A recurring expense is grouped by category and description, not by cost.**
+Including the cost would make a price change look like a separate expense: the
+old amount would keep generating beside the new one, every month, for ever.
+Where two rows share the month a price changed, the one entered later wins,
+because that is the one carrying the new price.
 
 **Import matches duplicates by calendar day, not by timestamp.** Export writes
 `yyyy-MM-dd`, so a row that goes out and comes back lands at midnight while
@@ -102,8 +123,8 @@ Date,Category,Description,Cost (SEK),Monthly
 2026-01-20,Tires,"Winter set, mounted",8000.0,false
 
 [Car]
-Name,Primary Fuel,Secondary Fuel,Initial Odometer,Theme Colour
-Volvo V60,Petrol,Electric,12000,4280391411
+Name,Primary Fuel,Secondary Fuel,Initial Odometer,Theme Colour,Photo
+Volvo V60,Petrol,Electric,12000,4280391411,car_a1b2.img
 ```
 
 Fields are quoted per RFC 4180, so a comma in a description is safe. Numbers
@@ -118,5 +139,24 @@ the car up by hand first.
 Only the fuel section is required, so files exported before the later sections
 existed still import.
 
-**Photos are not in the backup.** They survive a reinstall in place, but a
-restore onto a different phone will not carry them.
+A row that cannot be read is skipped and counted, and the number is reported
+alongside what was imported. It is not given a substitute date: an invented
+date would sit in the history looking like fact. One unreadable row used to
+abort the whole file.
+
+## Two exports
+
+The drawer offers both, because they answer different questions.
+
+**Export to CSV** writes the file above. It is the one to open in a
+spreadsheet.
+
+**Full backup (.zip)** writes that same CSV as `backup.csv` alongside the car
+photo under `photos/`. It is the one to keep if the phone is lost, because a
+CSV cannot carry an image and a restore from one arrives without the picture.
+
+Import takes either, decided by the file's first four bytes, so every file the
+app has ever written still restores. A photo from an archive is saved under a
+name generated on import rather than the one in the file: an archive entry
+name is text someone else wrote, and `../` in it would otherwise write outside
+the photo directory.
