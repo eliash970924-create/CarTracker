@@ -130,4 +130,43 @@ class StatsTest {
             delta
         )
     }
+
+    @Test
+    fun `history consumption is measured against the previous fill-up of the same fuel`() {
+        val entry = fill(3, 2500, liters = 30.0)
+        val older = listOf(fill(2, 2000), fill(1, 1500))
+        // 30 L over 2500-2000 km
+        assertEquals(6.0, consumptionForEntry(entry, older, initialOdometer = 1000)!!, delta)
+    }
+
+    @Test
+    fun `the oldest fill-up falls back to the car's initial odometer`() {
+        val entry = fill(1, 1500, liters = 40.0)
+        assertEquals(8.0, consumptionForEntry(entry, emptyList(), initialOdometer = 1000)!!, delta)
+    }
+
+    @Test
+    fun `a missed fill-up reports no consumption rather than a wrong one`() {
+        val entry = fill(2, 2000, liters = 50.0, missed = true)
+        assertEquals(null, consumptionForEntry(entry, listOf(fill(1, 1500)), initialOdometer = 1000))
+    }
+
+    @Test
+    fun `an entry with no odometer reading reports no consumption`() {
+        assertEquals(null, consumptionForEntry(fill(2, 0), listOf(fill(1, 1500)), initialOdometer = 1000))
+    }
+
+    @Test
+    fun `an odometer that did not advance reports no consumption`() {
+        val entry = fill(2, 1500)
+        assertEquals(null, consumptionForEntry(entry, listOf(fill(1, 1500)), initialOdometer = 1000))
+    }
+
+    @Test
+    fun `a different fuel in between is skipped over`() {
+        val entry = fill(3, 2500, fuel = "Petrol", liters = 30.0)
+        // The electric fill-up between them must not become the reference point.
+        val older = listOf(fill(2, 2200, fuel = "Electric"), fill(1, 2000, fuel = "Petrol"))
+        assertEquals(6.0, consumptionForEntry(entry, older, initialOdometer = 1000)!!, delta)
+    }
 }
