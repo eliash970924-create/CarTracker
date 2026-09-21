@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 
 class FuelViewModel(application: Application) : AndroidViewModel(application) {
@@ -46,35 +47,152 @@ class FuelViewModel(application: Application) : AndroidViewModel(application) {
     fun saveExpense(carId: Int, dateMillis: Long, category: String, description: String, cost: Double, isMonthly: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             expenseDao.insertExpense(Expense(carId = carId, dateMillis = dateMillis, category = category, description = description, costSek = cost, isMonthly = isMonthly))
-            if (isMonthly) checkRecurringExpenses(carId)
+            if (isMonthly) fillRecurringExpenses(carId)
         }
     }
 
     fun checkRecurringExpenses(carId: Int) {
+        viewModelScope.launch(Dispatchers.IO) { fillRecurringExpenses(carId) }
+    }
+
+    /**
+     * Outcome of an import, for reporting back to the user. Silence about what
+     * a restore actually did is how a backup quietly turns out to be useless.
+     */
+    data class ImportSummary(
+        val carName: String?,
+        val carCreated: Boolean,
+        val fuelAdded: Int,
+        val fuelSkipped: Int,
+        val expensesAdded: Int,
+        val expensesSkipped: Int
+    )
+
+    /**
+     * Restores a CSV backup in one pass.
+     *
+     * The car comes from the file when it carries a [ImportedCar] section:
+     * an existing car of that name is reused, otherwise one is created, so a
+     * backup can be restored onto a fresh install. Files written before the
+     * car section existed fall back to [fallbackCarId], the car on screen.
+     *
+     * Rows already present are skipped rather than inserted again, matched on
+     * the calendar day and values via [fuelKey] and [expenseKey]. Nothing is
+     * ever deleted: an import merges, it does not replace.
+     *
+     * Recurring expenses are filled in once at the end. Calling saveExpense in
+     * a loop would launch one checkRecurringExpenses per monthly row, and
+     * those run concurrently: two can each find the same month missing and
+     * both insert it.
+     */
+    fun importBackup(
+        fallbackCarId: Int?,
+        car: ImportedCar?,
+        fuelUps: List<FuelUp>,
+        expenses: List<Expense>,
+        dayOf: (Long) -> String,
+        onFinished: (ImportSummary?) -> Unit
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
-            val expenses = expenseDao.getExpensesListForCar(carId)
-            val monthlyExpenses = expenses.filter { it.isMonthly }
-            if (monthlyExpenses.isEmpty()) return@launch
+            val existingCar = car?.let { carDao.getCarByName(it.name) }
+            var created = false
 
-            val grouped = monthlyExpenses.groupBy { "${it.category}_${it.description}_${it.costSek}" }
-            val now = Calendar.getInstance()
-
-            grouped.values.forEach { group ->
-                val latest = group.maxByOrNull { it.dateMillis } ?: return@forEach
-                val cal = Calendar.getInstance().apply { timeInMillis = latest.dateMillis }
-
-                while (true) {
-                    val currentYear = cal.get(Calendar.YEAR)
-                    val currentMonth = cal.get(Calendar.MONTH)
-                    val targetYear = now.get(Calendar.YEAR)
-                    val targetMonth = now.get(Calendar.MONTH)
-
-                    if (currentYear < targetYear || (currentYear == targetYear && currentMonth < targetMonth)) {
-                        cal.add(Calendar.MONTH, 1)
-                        val newExpense = latest.copy(id = 0, dateMillis = cal.timeInMillis)
-                        expenseDao.insertExpense(newExpense)
-                    } else break
+            val carId: Int = when {
+                existingCar != null -> existingCar.id
+                car != null -> {
+                    created = true
+                    carDao.insertCar(
+                        Car(
+                            name = car.name,
+                            fuelType = car.fuelType,
+                            secondaryFuelType = car.secondaryFuelType,
+                            initialOdometer = car.initialOdometer,
+                            imageUri = null,
+                            themeColor = car.themeColor
+                        )
+                    ).toInt()
                 }
+                // A file with no car section needs the car on screen.
+                fallbackCarId != null -> fallbackCarId
+                else -> {
+                    withContext(Dispatchers.Main) { onFinished(null) }
+                    return@launch
+                }
+            }
+
+            val knownFuel = fuelDao.getFuelUpsListForCar(carId)
+                .map { fuelKey(dayOf(it.dateMillis), it.odometerKm, it.litersFilled, it.fuelTypeUsed) }
+                .toMutableSet()
+            val knownExpenses = expenseDao.getExpensesListForCar(carId)
+                .map { expenseKey(dayOf(it.dateMillis), it.category, it.description, it.costSek) }
+                .toMutableSet()
+
+            var fuelAdded = 0
+            var fuelSkipped = 0
+            fuelUps.forEach { row ->
+                val key = fuelKey(dayOf(row.dateMillis), row.odometerKm, row.litersFilled, row.fuelTypeUsed)
+                // add() reports whether the key was new, which also stops a
+                // file that repeats a row from inserting it twice.
+                if (knownFuel.add(key)) {
+                    fuelDao.insertFuelUp(row.copy(id = 0, carId = carId))
+                    fuelAdded++
+                } else {
+                    fuelSkipped++
+                }
+            }
+
+            var expensesAdded = 0
+            var expensesSkipped = 0
+            expenses.forEach { row ->
+                val key = expenseKey(dayOf(row.dateMillis), row.category, row.description, row.costSek)
+                if (knownExpenses.add(key)) {
+                    expenseDao.insertExpense(row.copy(id = 0, carId = carId))
+                    expensesAdded++
+                } else {
+                    expensesSkipped++
+                }
+            }
+
+            if (expensesAdded > 0 && expenses.any { it.isMonthly }) fillRecurringExpenses(carId)
+
+            withContext(Dispatchers.Main) {
+                onFinished(
+                    ImportSummary(
+                        carName = car?.name,
+                        carCreated = created,
+                        fuelAdded = fuelAdded,
+                        fuelSkipped = fuelSkipped,
+                        expensesAdded = expensesAdded,
+                        expensesSkipped = expensesSkipped
+                    )
+                )
+            }
+        }
+    }
+
+    private fun fillRecurringExpenses(carId: Int) {
+        val expenses = expenseDao.getExpensesListForCar(carId)
+        val monthlyExpenses = expenses.filter { it.isMonthly }
+        if (monthlyExpenses.isEmpty()) return
+
+        val grouped = monthlyExpenses.groupBy { "${it.category}_${it.description}_${it.costSek}" }
+        val now = Calendar.getInstance()
+
+        grouped.values.forEach { group ->
+            val latest = group.maxByOrNull { it.dateMillis } ?: return@forEach
+            val cal = Calendar.getInstance().apply { timeInMillis = latest.dateMillis }
+
+            while (true) {
+                val currentYear = cal.get(Calendar.YEAR)
+                val currentMonth = cal.get(Calendar.MONTH)
+                val targetYear = now.get(Calendar.YEAR)
+                val targetMonth = now.get(Calendar.MONTH)
+
+                if (currentYear < targetYear || (currentYear == targetYear && currentMonth < targetMonth)) {
+                    cal.add(Calendar.MONTH, 1)
+                    val newExpense = latest.copy(id = 0, dateMillis = cal.timeInMillis)
+                    expenseDao.insertExpense(newExpense)
+                } else break
             }
         }
     }

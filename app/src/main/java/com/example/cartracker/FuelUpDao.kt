@@ -21,4 +21,8 @@ interface FuelUpDao {
     // UPDATED: Now sorts primarily by the Calendar Date!
     @Query("SELECT * FROM fuel_ups WHERE carId = :carId ORDER BY dateMillis DESC, odometerKm DESC")
     fun getAllFuelUpsForCar(carId: Int): Flow<List<FuelUp>>
+
+    // Used by import to skip rows already present.
+    @Query("SELECT * FROM fuel_ups WHERE carId = :carId")
+    fun getFuelUpsListForCar(carId: Int): List<FuelUp>
 }
