@@ -46,35 +46,53 @@ class FuelViewModel(application: Application) : AndroidViewModel(application) {
     fun saveExpense(carId: Int, dateMillis: Long, category: String, description: String, cost: Double, isMonthly: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             expenseDao.insertExpense(Expense(carId = carId, dateMillis = dateMillis, category = category, description = description, costSek = cost, isMonthly = isMonthly))
-            if (isMonthly) checkRecurringExpenses(carId)
+            if (isMonthly) fillRecurringExpenses(carId)
         }
     }
 
     fun checkRecurringExpenses(carId: Int) {
+        viewModelScope.launch(Dispatchers.IO) { fillRecurringExpenses(carId) }
+    }
+
+    /**
+     * Restores a CSV backup in one pass.
+     *
+     * Inserts every row first and fills in recurring expenses once at the end.
+     * Calling saveExpense in a loop would launch one checkRecurringExpenses per
+     * monthly row, and those run concurrently: two can each find the same month
+     * missing and both insert it, duplicating the expense.
+     */
+    fun importEntries(carId: Int, fuelUps: List<FuelUp>, expenses: List<Expense>) {
         viewModelScope.launch(Dispatchers.IO) {
-            val expenses = expenseDao.getExpensesListForCar(carId)
-            val monthlyExpenses = expenses.filter { it.isMonthly }
-            if (monthlyExpenses.isEmpty()) return@launch
+            fuelUps.forEach { fuelDao.insertFuelUp(it.copy(id = 0, carId = carId)) }
+            expenses.forEach { expenseDao.insertExpense(it.copy(id = 0, carId = carId)) }
+            if (expenses.any { it.isMonthly }) fillRecurringExpenses(carId)
+        }
+    }
 
-            val grouped = monthlyExpenses.groupBy { "${it.category}_${it.description}_${it.costSek}" }
-            val now = Calendar.getInstance()
+    private fun fillRecurringExpenses(carId: Int) {
+        val expenses = expenseDao.getExpensesListForCar(carId)
+        val monthlyExpenses = expenses.filter { it.isMonthly }
+        if (monthlyExpenses.isEmpty()) return
 
-            grouped.values.forEach { group ->
-                val latest = group.maxByOrNull { it.dateMillis } ?: return@forEach
-                val cal = Calendar.getInstance().apply { timeInMillis = latest.dateMillis }
+        val grouped = monthlyExpenses.groupBy { "${it.category}_${it.description}_${it.costSek}" }
+        val now = Calendar.getInstance()
 
-                while (true) {
-                    val currentYear = cal.get(Calendar.YEAR)
-                    val currentMonth = cal.get(Calendar.MONTH)
-                    val targetYear = now.get(Calendar.YEAR)
-                    val targetMonth = now.get(Calendar.MONTH)
+        grouped.values.forEach { group ->
+            val latest = group.maxByOrNull { it.dateMillis } ?: return@forEach
+            val cal = Calendar.getInstance().apply { timeInMillis = latest.dateMillis }
 
-                    if (currentYear < targetYear || (currentYear == targetYear && currentMonth < targetMonth)) {
-                        cal.add(Calendar.MONTH, 1)
-                        val newExpense = latest.copy(id = 0, dateMillis = cal.timeInMillis)
-                        expenseDao.insertExpense(newExpense)
-                    } else break
-                }
+            while (true) {
+                val currentYear = cal.get(Calendar.YEAR)
+                val currentMonth = cal.get(Calendar.MONTH)
+                val targetYear = now.get(Calendar.YEAR)
+                val targetMonth = now.get(Calendar.MONTH)
+
+                if (currentYear < targetYear || (currentYear == targetYear && currentMonth < targetMonth)) {
+                    cal.add(Calendar.MONTH, 1)
+                    val newExpense = latest.copy(id = 0, dateMillis = cal.timeInMillis)
+                    expenseDao.insertExpense(newExpense)
+                } else break
             }
         }
     }
