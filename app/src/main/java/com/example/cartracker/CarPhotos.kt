@@ -72,3 +72,22 @@ fun deleteCarPhoto(context: Context, stored: String?) {
         // Nothing useful to do; a stale file is harmless next to losing the row.
     }
 }
+
+/**
+ * Stores photo bytes read from somewhere else - a backup archive - under a
+ * fresh name, returning it, or null if the bytes could not be written.
+ *
+ * The name is generated here rather than taken from the source. An archive
+ * entry's name is attacker-controlled text and could contain "../", so using
+ * it would let a crafted backup write outside the photo directory.
+ *
+ * The stream is deliberately not closed: the caller may still be reading
+ * further entries from it.
+ */
+fun storePhotoBytes(context: Context, input: java.io.InputStream): String? = try {
+    val fileName = "car_${UUID.randomUUID()}.img"
+    carPhotoFile(context, fileName).outputStream().use { output -> input.copyTo(output) }
+    fileName
+} catch (e: Exception) {
+    null
+}

@@ -36,7 +36,8 @@ fun GarageDrawer(
     onAddCar: () -> Unit,
     onSelectTab: (String) -> Unit,
     onImport: () -> Unit,
-    onExport: () -> Unit
+    onExport: () -> Unit,
+    onExportBackup: () -> Unit
 ) {
     val context = LocalContext.current
 
@@ -167,10 +168,18 @@ fun GarageDrawer(
             modifier = Modifier.padding(horizontal = 12.dp)
         )
         if (selectedCar != null && hasDataToExport) {
+            // Two exports on purpose: the CSV opens in a spreadsheet, the zip
+            // carries the photo and is the one to keep if the phone is lost.
             NavigationDrawerItem(
                 label = { Text("Export ${selectedCar.name} to CSV") },
                 selected = false,
                 onClick = onExport,
+                modifier = Modifier.padding(horizontal = 12.dp)
+            )
+            NavigationDrawerItem(
+                label = { Text("Full backup of ${selectedCar.name} (.zip)") },
+                selected = false,
+                onClick = onExportBackup,
                 modifier = Modifier.padding(horizontal = 12.dp)
             )
         }
