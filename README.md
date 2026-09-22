@@ -16,6 +16,8 @@ and consumption per 100 km.
 - **Expenses** by category (Maintenance, Tires, Insurance, Parking, Wash,
   Tolls, Other), with recurring monthly costs filled in automatically
 - **Charts** for fuel price and consumption over time
+- **Monthly overview** of what the car costs and how far it goes, month by
+  month, with the running averages
 - **Backup** that exports and restores everything: history, the car, and the photo
 
 Fuel types: Petrol, Diesel, Electric, Gas, E85.
@@ -45,12 +47,14 @@ Single-Activity Jetpack Compose UI over a Room database.
 | `MainActivity.kt` | assembles the screen and owns the state the pieces share |
 | `EntriesTab.kt` | the fill-up form, the dashboard figures and the history list |
 | `ExpensesTab.kt` | the expense form, total and history |
-| `ChartsTab.kt` | fuel price and consumption charts |
+| `ChartsTab.kt` | fuel price, consumption and monthly charts |
+| `MonthlySection.kt` | the monthly overview: averages, bars and the month list |
 | `AddEditCarDialog.kt` | the add/edit car form |
 | `EditFuelUpDialog.kt` | editing or deleting one fill-up |
 | `GarageDrawer.kt` | the garage, view switcher and backup actions |
 | `FuelViewModel.kt` | database access, import and the recurring-expense fill-in |
 | `Stats.kt` | consumption and cost arithmetic, and the chart series |
+| `MonthlyOverview.kt` | cost and distance per month, and the bar scaling |
 | `RecurringExpenses.kt` | which months of a monthly expense are missing |
 | `CsvBackup.kt` | the backup file format: writing, escaping and parsing |
 | `BackupArchive.kt` | the zip backup, and telling a zip from a bare CSV |
@@ -60,8 +64,8 @@ Single-Activity Jetpack Compose UI over a Room database.
 
 The arithmetic and the file parsing are kept out of the composables as pure
 functions, so the things most able to be quietly wrong can be tested. See
-`StatsTest`, `RecurringExpensesTest` and `BackupParseTest` under
-`app/src/test/`; `./gradlew test` runs them.
+`StatsTest`, `RecurringExpensesTest`, `BackupParseTest` and
+`MonthlyOverviewTest` under `app/src/test/`; `./gradlew test` runs them.
 
 A form's contents belong to `MainActivity` rather than to the tab or dialog
 showing them, as a state holder passed down. A composable is disposed when
@@ -96,6 +100,22 @@ Including the cost would make a price change look like a separate expense: the
 old amount would keep generating beside the new one, every month, for ever.
 Where two rows share the month a price changed, the one entered later wins,
 because that is the one carrying the new price.
+
+**A month's distance is spread across the days a tank covered, not dropped
+into the month it was filled in.** An odometer reading only exists at a
+fill-up, so a tank spanning a month boundary has to be attributed somehow.
+Even driving is an assumption, but a mild one, and it stops the timing of a
+fill-up deciding how a month looks. A day belongs to the month it starts in.
+
+The monthly figures also differ from the consumption arithmetic in three
+ways, each deliberate: distance follows the car's odometer however it was
+fuelled, so a hybrid's kilometres are counted once rather than twice; a
+missed fill-up still contributes its distance, because the fuel is unknown
+but the driving happened; and the first fill-up contributes none, because
+the car's initial odometer carries no date to measure from. Quiet months are
+included with zeroes, since insurance is owed in a month nothing was driven,
+and the month in progress is left out so a part-finished month cannot drag
+the average down.
 
 **Import matches duplicates by calendar day, not by timestamp.** Export writes
 `yyyy-MM-dd`, so a row that goes out and comes back lands at midnight while
