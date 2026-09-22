@@ -51,6 +51,7 @@ Single-Activity Jetpack Compose UI over a Room database.
 | `MonthlySection.kt` | the monthly overview: averages, bars and the month list |
 | `AddEditCarDialog.kt` | the add/edit car form |
 | `EditFuelUpDialog.kt` | editing or deleting one fill-up |
+| `EditExpenseDialog.kt` | editing or deleting one expense, and stopping a repeat |
 | `GarageDrawer.kt` | the garage, view switcher and backup actions |
 | `FuelViewModel.kt` | database access, import and the recurring-expense fill-in |
 | `Stats.kt` | consumption and cost arithmetic, and the chart series |
@@ -100,6 +101,18 @@ Including the cost would make a price change look like a separate expense: the
 old amount would keep generating beside the new one, every month, for ever.
 Where two rows share the month a price changed, the one entered later wins,
 because that is the one carrying the new price.
+
+**Stopping a repeat clears the flag on every row of the series, not just the
+one being edited.** The generator seeds from the latest row still marked
+monthly, so clearing one leaves the next one down to take over and fill the
+months straight back in. For the same reason, deleting a single month of a
+live repeat does not stick: turn the repeat off first. The dialog says so
+rather than letting it look like the delete failed. Months already recorded
+are kept either way — switching a repeat off ends it, it does not erase it.
+
+**Long press edits, in both lists.** It used to delete an expense outright
+while the same gesture on a fill-up opened an editor, so one press meant two
+very different things and one of them destroyed data without asking.
 
 **A month's distance is spread across the days a tank covered, not dropped
 into the month it was filled in.** An odometer reading only exists at a
