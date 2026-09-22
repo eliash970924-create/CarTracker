@@ -120,7 +120,11 @@ fun AddEditCarDialog(
             // picker's content:// URI, which is a grant that dies on reinstall.
             form.photo = copyPhotoIntoAppStorage(context, uri)
             try {
-                val bitmap = loadCarPhoto(context, form.photo)
+                // Only a colour is wanted, so a tiny decode is plenty. It used
+                // to read the whole camera image for this, on the main thread.
+                // Scaling to one pixel samples near the middle of the photo,
+                // which is usually the car.
+                val bitmap = loadCarPhoto(context, form.photo, targetPx = 64)
                 if (bitmap != null) {
                     val scaled = Bitmap.createScaledBitmap(bitmap, 1, 1, true)
                     val averaged = scaled.getPixel(0, 0)
