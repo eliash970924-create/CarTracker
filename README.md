@@ -13,7 +13,8 @@ something real - see below.
 
 ## What it does
 
-- **Multiple cars**, each with its own photo, colour theme and history
+- **Multiple cars**, each with its own photo, colour theme and history, in a
+  garage that opens first - or straight into one default car
 - **Bifuel and plug-in hybrids** — a second fuel is tracked separately against
   its own odometer trail, so petrol and electric figures stay honest
 - **Fill-ups** by odometer reading or trip distance, with a "missed previous
@@ -80,7 +81,8 @@ Single-Activity Jetpack Compose UI over a Room database.
 | `AddEditCarDialog.kt` | the add/edit car form |
 | `EditFuelUpDialog.kt` | editing or deleting one fill-up |
 | `EditExpenseDialog.kt` | editing or deleting one expense, and stopping a repeat |
-| `GarageDrawer.kt` | the garage, view switcher and backup actions |
+| `Garage.kt` | the garage screen, and which car opens at start |
+| `GarageDrawer.kt` | the drawer: cars, view switcher and backup actions |
 | `FuelViewModel.kt` | database access, import and the recurring-expense fill-in |
 | `Stats.kt` | consumption and cost arithmetic, and the chart series |
 | `MonthlyOverview.kt` | cost and distance per month, and the bar scaling |
@@ -93,8 +95,8 @@ Single-Activity Jetpack Compose UI over a Room database.
 
 The arithmetic and the file parsing are kept out of the composables as pure
 functions, so the things most able to be quietly wrong can be tested. See
-`StatsTest`, `RecurringExpensesTest`, `BackupParseTest` and
-`MonthlyOverviewTest` under `app/src/test/`; `./gradlew test` runs them.
+`StatsTest`, `RecurringExpensesTest`, `BackupParseTest`,
+`MonthlyOverviewTest` and `GarageTest` under `app/src/test/`; `./gradlew test` runs them.
 
 A form's contents belong to `MainActivity` rather than to the tab or dialog
 showing them, as a state holder passed down. A composable is disposed when
@@ -155,6 +157,20 @@ amber would vanish into a plain drop. Cut through, it shows whatever is
 behind it - petrol normally, the theme colour when themed - which is also why
 the monochrome layer reuses the foreground unchanged. The legacy raster
 icons for Android 7 are rendered from the same path.
+
+**The app opens on the garage unless a car is starred.** The star makes a
+car the default, so someone with one car - or one main car - goes straight
+to it. It is never set for you, even with only one car. The default lives in
+preferences rather than the database, as a choice about this phone rather
+than a fact about the car, which means it can outlive the car it names;
+`launchCar` treats a missing car as no default. Back from a car goes to the
+garage rather than out of the app.
+
+**The selected car is held as an id, looked up in the live list.** Holding
+the Car itself meant a stale copy after every edit, refreshed by hand, and it
+did not survive rotation: turning the phone jumped back to the first car.
+The id is saveable, and the launch decision is made once, so a rotation does
+not re-open the default car over wherever you had got to.
 
 **Long press edits, in both lists.** It used to delete an expense outright
 while the same gesture on a fill-up opened an editor, so one press meant two
