@@ -14,6 +14,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Backup
+import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.TableChart
@@ -27,9 +28,11 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import se.eliash.cartracker.ui.theme.ThemeMode
@@ -54,6 +57,11 @@ fun SettingsScreen(
     onImport: () -> Unit,
     onBackup: (Car) -> Unit,
     onExportCsv: (Car) -> Unit,
+    autoBackup: AutoBackupState,
+    onChooseBackupFile: () -> Unit,
+    onAutoBackupFrequencyChange: (BackupFrequency) -> Unit,
+    onBackUpNow: () -> Unit,
+    onStopAutoBackup: () -> Unit,
     versionName: String?,
     modifier: Modifier = Modifier
 ) {
@@ -90,6 +98,17 @@ fun SettingsScreen(
                 )
             }
         }
+        Spacer(modifier = Modifier.height(8.dp))
+
+        HorizontalDivider()
+        SectionHeader("Automatic backup")
+        AutoBackupSection(
+            state = autoBackup,
+            onChooseFile = onChooseBackupFile,
+            onFrequencyChange = onAutoBackupFrequencyChange,
+            onBackUpNow = onBackUpNow,
+            onStop = onStopAutoBackup
+        )
         Spacer(modifier = Modifier.height(8.dp))
 
         HorizontalDivider()
@@ -131,6 +150,83 @@ fun SettingsScreen(
             leadingContent = { Icon(Icons.Outlined.Info, contentDescription = null) }
         )
         Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+/**
+ * One file kept up to date with the whole garage. Until a file is chosen,
+ * that is the only thing on offer; the schedule and status appear with it.
+ */
+@Composable
+private fun AutoBackupSection(
+    state: AutoBackupState,
+    onChooseFile: () -> Unit,
+    onFrequencyChange: (BackupFrequency) -> Unit,
+    onBackUpNow: () -> Unit,
+    onStop: () -> Unit
+) {
+    ListItem(
+        headlineContent = { Text(if (state.isSetUp) "Backup file" else "Set up automatic backup") },
+        supportingContent = {
+            Text(state.fileName ?: "Choose where to keep it - Google Drive, or the phone's own storage")
+        },
+        leadingContent = { Icon(Icons.Outlined.CloudUpload, contentDescription = null) },
+        modifier = Modifier.clickable(onClick = onChooseFile)
+    )
+    if (!state.isSetUp) return
+
+    ListItem(headlineContent = { Text("How often") })
+    FrequencyPicker(
+        selected = state.frequency,
+        onSelect = onFrequencyChange,
+        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
+    )
+
+    val status = autoBackupStatus(state, System.currentTimeMillis())
+    ListItem(
+        headlineContent = { Text("Status") },
+        supportingContent = {
+            Text(
+                status.text,
+                color = if (status.problem) MaterialTheme.colorScheme.error else Color.Unspecified
+            )
+        }
+    )
+    Row(modifier = Modifier.padding(horizontal = 8.dp)) {
+        TextButton(onClick = onBackUpNow) { Text("Back up now") }
+        TextButton(onClick = onStop) { Text("Stop using this file") }
+    }
+    Text(
+        "Keeps one file up to date with every car. It mirrors the garage as it is, " +
+            "so a car deleted here leaves the backup at the next run. Android runs it " +
+            "when the phone isn't busy, so the time is approximate.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FrequencyPicker(
+    selected: BackupFrequency,
+    onSelect: (BackupFrequency) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val options = listOf(
+        BackupFrequency.Off to "Off",
+        BackupFrequency.Daily to "Daily",
+        BackupFrequency.Weekly to "Weekly"
+    )
+    SingleChoiceSegmentedButtonRow(modifier = modifier) {
+        options.forEachIndexed { index, (frequency, label) ->
+            SegmentedButton(
+                selected = selected == frequency,
+                onClick = { onSelect(frequency) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                label = { Text(label, maxLines = 1) }
+            )
+        }
     }
 }
 
