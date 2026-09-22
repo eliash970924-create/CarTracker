@@ -25,6 +25,7 @@ something real - see below.
 - **Monthly overview** of what the car costs and how far it goes, month by
   month, with the running averages
 - **Backup** that exports and restores everything: history, the car, and the photo
+- **Dark mode**, following the phone or set by hand
 
 Fuel types: Petrol, Diesel, Electric, Gas, E85.
 
@@ -96,7 +97,8 @@ Single-Activity Jetpack Compose UI over a Room database.
 The arithmetic and the file parsing are kept out of the composables as pure
 functions, so the things most able to be quietly wrong can be tested. See
 `StatsTest`, `RecurringExpensesTest`, `BackupParseTest`,
-`MonthlyOverviewTest`, `GarageTest` and `PaletteTest` under `app/src/test/`; `./gradlew test` runs them.
+`MonthlyOverviewTest`, `GarageTest`, `PaletteTest`, `ThemeTest` and
+`ImageSamplingTest` under `app/src/test/`; `./gradlew test` runs them.
 
 A form's contents belong to `MainActivity` rather than to the tab or dialog
 showing them, as a state holder passed down. A composable is disposed when
@@ -184,6 +186,18 @@ ivory page, white cards and an amber add button in the garage; inside a car,
 the colour chosen for it. The pairings are held to WCAG contrast by
 `PaletteTest` - the logo's amber is only 2.1:1 on white, so the star and
 anything else on a card use a deeper amber or petrol.
+
+**In dark mode a car's colour is lifted until it reads.** Colours are chosen
+on a light screen, and petrol on a dark page is 1.3:1 - a chart line in it
+would not be there. `liftUntilReadable` blends it towards white until it
+clears 3:1; a colour already bright enough is left exactly as chosen, and
+light mode is untouched. `ThemeTest` holds a spread of colours, black and
+white included, to that and to a readable title on each car's bar.
+
+**Photos are decoded at the size they are shown.** A 12-megapixel photo is
+48 MB as a bitmap. Thumbnails are decoded with an `inSampleSize` so the
+shorter side just covers the target - 750 KB for the garage card - off the
+main thread, and cached so the garage and the drawer share one.
 
 **Long press edits, in both lists.** It used to delete an expense outright
 while the same gesture on a fill-up opened an editor, so one press meant two

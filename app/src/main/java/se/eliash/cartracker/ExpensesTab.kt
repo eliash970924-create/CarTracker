@@ -231,7 +231,7 @@ fun ExpensesTab(
                             Text(
                                 expense.description.ifEmpty { "No description" },
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = if (expense.description.isEmpty()) Color.Gray else Color.Unspecified
+                                color = if (expense.description.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified
                             )
                             Text(
                                 "${"%.2f".format(currencyLocale, expense.costSek)} SEK",

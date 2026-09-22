@@ -3,6 +3,9 @@ package se.eliash.cartracker
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import android.util.LruCache
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import java.io.File
 import java.util.UUID
 
@@ -49,14 +52,37 @@ fun copyPhotoIntoAppStorage(context: Context, source: Uri): String? = try {
 }
 
 /** Loads a car photo, accepting either storage form. */
-fun loadCarPhoto(context: Context, stored: String?): Bitmap? {
+fun loadCarPhoto(context: Context, stored: String?, targetPx: Int): Bitmap? {
     if (stored.isNullOrBlank()) return null
     val uri = if (isExternalPhotoReference(stored)) {
         Uri.parse(stored)
     } else {
         Uri.fromFile(carPhotoFile(context, stored))
     }
-    return loadAndRotateBitmap(context, uri)
+    return loadAndRotateBitmap(context, uri, targetPx)
+}
+
+/**
+ * Thumbnails already decoded, so the garage and the drawer share one, and
+ * coming back to the garage does not decode it again. Keyed by the stored
+ * name and the size: a changed photo gets a new stored name, so a stale
+ * entry is never looked up again and simply ages out.
+ */
+private val thumbnails = object : LruCache<String, ImageBitmap>(8 * 1024 * 1024) {
+    override fun sizeOf(key: String, value: ImageBitmap) = value.width * value.height * 4
+}
+
+private fun thumbnailKey(stored: String, targetPx: Int) = "$stored@$targetPx"
+
+/** A thumbnail already decoded, without doing any work. */
+fun cachedCarThumbnail(stored: String, targetPx: Int): ImageBitmap? =
+    thumbnails.get(thumbnailKey(stored, targetPx))
+
+/** Decodes a thumbnail and keeps it. Blocking: call it off the main thread. */
+fun loadCarThumbnail(context: Context, stored: String, targetPx: Int): ImageBitmap? {
+    val image = loadCarPhoto(context, stored, targetPx)?.asImageBitmap() ?: return null
+    thumbnails.put(thumbnailKey(stored, targetPx), image)
+    return image
 }
 
 /**

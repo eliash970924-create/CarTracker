@@ -29,20 +29,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import se.eliash.cartracker.ui.theme.CarTallyAmberDeep
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -186,8 +189,9 @@ private fun GarageCarCard(
                     Icon(
                         Icons.Filled.Star,
                         contentDescription = "Stop opening ${car.name} at start",
-                        // The deeper amber: the logo's is too faint on a white card.
-                        tint = CarTallyAmberDeep
+                        // The scheme's star colour: deep amber on white cards,
+                        // the logo amber on dark ones. Neither reads on both.
+                        tint = MaterialTheme.colorScheme.tertiary
                     )
                 } else {
                     Icon(
@@ -219,29 +223,60 @@ fun garageStats(car: Car, summary: CarSummary?, locale: Locale): String {
     return "$km · last fill-up $date"
 }
 
+/** Where a car's thumbnail has got to. */
+private sealed interface Thumbnail {
+    data object None : Thumbnail
+    data object Loading : Thumbnail
+    class Ready(val image: ImageBitmap) : Thumbnail
+}
+
 /**
  * The car's photo, or its colour where there is no photo, so a car always
  * reads as itself. Shared by the drawer and the garage.
+ *
+ * The photo is decoded off the main thread, at the size it is shown, and
+ * kept - so the garage and the drawer share one decode, and neither holds up
+ * the screen while a full camera image is read. While it loads, a neutral
+ * placeholder stands in rather than the car's colour, which would flash.
  */
 @Composable
 fun CarAvatar(car: Car, size: Dp, shape: Shape = CircleShape) {
     val context = LocalContext.current
-    val photo = remember(car.imageUri) {
-        try {
-            loadCarPhoto(context, car.imageUri)?.asImageBitmap()
-        } catch (e: Exception) {
-            null
+    val targetPx = with(LocalDensity.current) { size.roundToPx() }
+    val stored = car.imageUri?.takeIf { it.isNotBlank() }
+
+    // produceState keeps its value when the keys change, so each run starts
+    // by setting the value for the photo it is now about - otherwise a
+    // replaced photo would go on showing the old one.
+    val thumbnail by produceState<Thumbnail>(Thumbnail.Loading, stored, targetPx) {
+        val cached = stored?.let { cachedCarThumbnail(it, targetPx) }
+        value = when {
+            stored == null -> Thumbnail.None
+            cached != null -> Thumbnail.Ready(cached)
+            else -> Thumbnail.Loading
+        }
+        if (value == Thumbnail.Loading && stored != null) {
+            val loaded = withContext(Dispatchers.IO) {
+                try { loadCarThumbnail(context, stored, targetPx) } catch (e: Exception) { null }
+            }
+            value = loaded?.let { Thumbnail.Ready(it) } ?: Thumbnail.None
         }
     }
-    if (photo != null) {
-        Image(
-            bitmap = photo,
+
+    when (val t = thumbnail) {
+        is Thumbnail.Ready -> Image(
+            bitmap = t.image,
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.size(size).clip(shape)
         )
-    } else {
-        Box(
+        Thumbnail.Loading -> Box(
+            modifier = Modifier
+                .size(size)
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        )
+        Thumbnail.None -> Box(
             modifier = Modifier
                 .size(size)
                 .clip(shape)

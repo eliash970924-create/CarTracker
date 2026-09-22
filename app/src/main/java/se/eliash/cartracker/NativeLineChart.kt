@@ -54,8 +54,8 @@ fun NativeLineChart(data: List<Double>, title: String, lineColor: Color) {
             }
             Spacer(modifier = Modifier.height(8.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Lowest: %.2f".format(Locale("sv", "SE"), data.minOrNull() ?: 0.0), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                Text("Highest: %.2f".format(Locale("sv", "SE"), data.maxOrNull() ?: 0.0), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                Text("Lowest: %.2f".format(Locale("sv", "SE"), data.minOrNull() ?: 0.0), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Highest: %.2f".format(Locale("sv", "SE"), data.maxOrNull() ?: 0.0), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

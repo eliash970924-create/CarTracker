@@ -60,7 +60,7 @@ fun MonthlySection(
                     "ended - the one in progress is left out so it cannot drag " +
                     "the average down.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.Gray
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         return
@@ -258,7 +258,7 @@ private fun MonthlyBarChart(
                             color = if (isSelected) {
                                 MaterialTheme.colorScheme.onSurface
                             } else {
-                                Color.Gray
+                                MaterialTheme.colorScheme.onSurfaceVariant
                             },
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                             maxLines = 1
@@ -273,7 +273,7 @@ private fun MonthlyBarChart(
                     "Highest: ${monthLabel(months[peakIndex], locale)} - " +
                         formatValue(values[peakIndex]),
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -311,7 +311,7 @@ private fun MonthRow(month: MonthSummary, currencyLocale: Locale) {
                 Text(
                     "Nothing recorded",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
                 Row(
@@ -326,14 +326,14 @@ private fun MonthRow(month: MonthSummary, currencyLocale: Locale) {
                             }
                         },
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
                         "Fuel %.0f - Other %.0f".format(
                             currencyLocale, month.fuelCost, month.expenseCost
                         ),
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
