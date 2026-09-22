@@ -330,9 +330,11 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                         "Charts" -> ChartsTab(
                             car = selectedCar!!,
                             fuelHistory = fuelHistory,
+                            expenses = expenseHistory,
                             subTab = chartSubTab,
                             onSubTabChange = { chartSubTab = it },
                             primaryColor = activePrimaryColor,
+                            currencyLocale = svLocale,
                             modifier = Modifier.fillMaxSize().padding(paddingValues)
                         )
 
