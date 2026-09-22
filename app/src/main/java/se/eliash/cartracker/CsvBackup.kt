@@ -277,3 +277,15 @@ fun parseBackupCsv(csv: String, parseDate: (String) -> Long?): ParsedBackup {
 
     return ParsedBackup(car, fuelUps, expenses, unreadable)
 }
+
+/**
+ * Fill-ups newest first, as the history list shows them - the same order as
+ * the fill-up query's ORDER BY dateMillis DESC, odometerKm DESC, so a CSV
+ * exported from Settings reads exactly like one exported from the car.
+ */
+fun inHistoryOrder(fuelUps: List<FuelUp>): List<FuelUp> =
+    fuelUps.sortedWith(compareByDescending<FuelUp> { it.dateMillis }.thenByDescending { it.odometerKm })
+
+/** Expenses newest first, as the expense list shows them. */
+fun expensesInHistoryOrder(expenses: List<Expense>): List<Expense> =
+    expenses.sortedByDescending { it.dateMillis }

@@ -14,6 +14,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
@@ -69,6 +70,14 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
     // Saveable, so turning the phone does not throw away where you were.
     var currentTab by rememberSaveable { mutableStateOf("Entries") }
     var chartSubTab by rememberSaveable { mutableStateOf("Price") }
+
+    // Settings is a third place to be, beside the garage and a car. Saveable,
+    // like the rest, so turning the phone does not close it.
+    var showSettings by rememberSaveable { mutableStateOf(false) }
+
+    // Which car an export is for. Saveable: the system file picker can outlive
+    // this screen, and its answer then arrives at a fresh one.
+    var exportCarId by rememberSaveable { mutableStateOf<Int?>(null) }
 
     // Null until the database has answered. Telling "not loaded yet" apart
     // from "no cars" is what keeps the garage from flashing up for a frame
@@ -142,25 +151,35 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
 
     val svLocale = Locale.forLanguageTag("sv-SE")
 
+    // For Settings > About. Read from the package rather than BuildConfig,
+    // which this build does not generate.
+    val versionName = remember {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
+    }
+
     val formatBackupDate: (Long) -> String = { millis ->
         SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(millis))
     }
 
+    // Both exports read the chosen car's history from the database rather than
+    // what is on screen, so Settings can export any car, not only the open one.
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
         uri?.let {
+            val car = cars.firstOrNull { c -> c.id == exportCarId } ?: return@let
             scope.launch(Dispatchers.IO) {
                 try {
+                    val (fuelUps, expenses) = viewModel.historyForExport(car.id)
                     context.contentResolver.openOutputStream(it)
                         ?.bufferedWriter(Charsets.UTF_8)
                         ?.use { writer ->
                             writeBackupCsv(
-                                writer, selectedCar, fuelHistory, expenseHistory,
+                                writer, car, fuelUps, expenses,
                                 photoName = null, formatDate = formatBackupDate
                             )
                         }
-                    val summary = "Exported ${fuelHistory.size} fill-ups and ${expenseHistory.size} expenses"
+                    val summary = "Exported ${car.name}: ${fuelUps.size} fill-ups and ${expenses.size} expenses"
                     launch(Dispatchers.Main) { Toast.makeText(context, summary, Toast.LENGTH_LONG).show() }
                 } catch (e: Exception) {
                     launch(Dispatchers.Main) { Toast.makeText(context, "Export failed", Toast.LENGTH_SHORT).show() }
@@ -175,19 +194,16 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
         ActivityResultContracts.CreateDocument("application/zip")
     ) { uri ->
         uri?.let {
+            val car = cars.firstOrNull { c -> c.id == exportCarId } ?: return@let
             scope.launch(Dispatchers.IO) {
                 try {
+                    val (fuelUps, expenses) = viewModel.historyForExport(car.id)
                     context.contentResolver.openOutputStream(it)?.use { output ->
-                        writeBackupZip(
-                            output, context, selectedCar, fuelHistory, expenseHistory,
-                            formatDate = formatBackupDate
-                        )
+                        writeBackupZip(output, context, car, fuelUps, expenses, formatDate = formatBackupDate)
                     }
-                    val withPhoto = selectedCar?.imageUri?.let { photo ->
-                        !isExternalPhotoReference(photo)
-                    } ?: false
-                    val summary = "Backed up ${fuelHistory.size} fill-ups, " +
-                        "${expenseHistory.size} expenses" +
+                    val withPhoto = car.imageUri?.let { photo -> !isExternalPhotoReference(photo) } ?: false
+                    val summary = "Backed up ${car.name}: ${fuelUps.size} fill-ups, " +
+                        "${expenses.size} expenses" +
                         if (withPhoto) " and the photo" else ""
                     launch(Dispatchers.Main) { Toast.makeText(context, summary, Toast.LENGTH_LONG).show() }
                 } catch (e: Exception) {
@@ -196,6 +212,7 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
             }
         }
     }
+    fun safeFileName(car: Car) = car.name.replace(" ", "_")
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
@@ -262,8 +279,9 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
     // A car wears its own colour; one without a colour chosen, CarTally petrol.
     val activePrimaryColor = selectedCar?.themeColor?.let { Color(it) } ?: CarTallyPetrol
 
-    // The garage wears CarTally's colours outright. A car keeps its own accent.
-    val dynamicThemeColors = if (selectedCar == null) {
+    // The garage and Settings wear CarTally's colours outright - both are about
+    // the app rather than one car. A car keeps its own accent.
+    val dynamicThemeColors = if (selectedCar == null || showSettings) {
         carTallyColorScheme(baseColors, darkTheme)
     } else {
         carColorScheme(baseColors, activePrimaryColor, darkTheme)
@@ -371,28 +389,32 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
 
         // Back from a car goes to the garage rather than out of the app. An open
         // drawer closes first, as it would anyway.
-        BackHandler(enabled = drawerState.isOpen || selectedCar != null) {
-            if (drawerState.isOpen) {
-                scope.launch { drawerState.close() }
-            } else {
-                selectedCarId = null
+        BackHandler(enabled = drawerState.isOpen || showSettings || selectedCar != null) {
+            when {
+                drawerState.isOpen -> { scope.launch { drawerState.close() } }
+                showSettings -> { showSettings = false }
+                else -> { selectedCarId = null }
             }
         }
 
         ModalNavigationDrawer(
             drawerState = drawerState,
+            // No swipe-open from Settings, which has a back arrow instead of the
+            // menu button: a drawer appearing from nowhere there would confuse.
+            gesturesEnabled = !showSettings,
             drawerContent = {
                 GarageDrawer(
                     cars = cars,
                     selectedCar = selectedCar,
                     currentTab = currentTab,
-                    hasDataToExport = fuelHistory.isNotEmpty() || expenseHistory.isNotEmpty(),
                     onSelectCar = { car ->
                         selectedCarId = car.id
+                        showSettings = false
                         scope.launch { drawerState.close() }
                     },
                     onOpenGarage = {
                         selectedCarId = null
+                        showSettings = false
                         scope.launch { drawerState.close() }
                     },
                     // Deliberately leaves the drawer open, as before: the
@@ -405,32 +427,30 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                         currentTab = tab
                         scope.launch { drawerState.close() }
                     },
-                    onImport = {
-                        importLauncher.launch(arrayOf("*/*"))
+                    onOpenSettings = {
+                        showSettings = true
                         scope.launch { drawerState.close() }
-                    },
-                    onExport = {
-                        val safeName = selectedCar!!.name.replace(" ", "_")
-                        exportLauncher.launch("${safeName}_History.csv")
-                        scope.launch { drawerState.close() }
-                    },
-                    onExportBackup = {
-                        val safeName = selectedCar!!.name.replace(" ", "_")
-                        exportZipLauncher.launch("${safeName}_Backup.zip")
-                        scope.launch { drawerState.close() }
-                    },
-                    themeMode = themeMode,
-                    onThemeModeChange = { changeThemeMode(it) }
+                    }
                 )
             }
         ) {
             Scaffold(
                 topBar = {
                     TopAppBar(
-                        title = { Text(selectedCar?.name ?: "CarTally") },
-                        navigationIcon = { IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Default.Menu, null) } },
+                        title = { Text(if (showSettings) "Settings" else selectedCar?.name ?: "CarTally") },
+                        navigationIcon = {
+                            if (showSettings) {
+                                IconButton(onClick = { showSettings = false }) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                                }
+                            } else {
+                                IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                    Icon(Icons.Default.Menu, "Menu")
+                                }
+                            }
+                        },
                         actions = {
-                            if (selectedCar != null) {
+                            if (selectedCar != null && !showSettings) {
                                 IconButton(onClick = {
                                     carForm.loadFrom(selectedCar!!)
                                     editingCar = selectedCar
@@ -448,7 +468,7 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                     )
                 },
                 floatingActionButton = {
-                    if (loadedCars != null && selectedCar == null) {
+                    if (loadedCars != null && selectedCar == null && !showSettings) {
                         // The logo's drop and its gauge: amber, with the + in petrol.
                         FloatingActionButton(
                             onClick = { carForm.reset(); showAddCarDialog = true },
@@ -464,6 +484,25 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                     // A frame or two while the database answers. Blank rather
                     // than the garage, which would flash before a default car.
                     Box(modifier = Modifier.fillMaxSize().padding(paddingValues))
+                } else if (showSettings) {
+                    SettingsScreen(
+                        cars = cars,
+                        themeMode = themeMode,
+                        onThemeModeChange = { changeThemeMode(it) },
+                        defaultCarId = defaultCarId,
+                        onDefaultCarChange = { setDefaultCar(it) },
+                        onImport = { importLauncher.launch(arrayOf("*/*")) },
+                        onBackup = { car ->
+                            exportCarId = car.id
+                            exportZipLauncher.launch("${safeFileName(car)}_Backup.zip")
+                        },
+                        onExportCsv = { car ->
+                            exportCarId = car.id
+                            exportLauncher.launch("${safeFileName(car)}_History.csv")
+                        },
+                        versionName = versionName,
+                        modifier = Modifier.fillMaxSize().padding(paddingValues)
+                    )
                 } else if (selectedCar == null) {
                     GarageScreen(
                         cars = cars,

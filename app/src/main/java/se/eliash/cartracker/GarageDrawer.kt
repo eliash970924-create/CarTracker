@@ -1,10 +1,12 @@
 package se.eliash.cartracker
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -13,14 +15,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import se.eliash.cartracker.ui.theme.ThemeMode
 
 /**
- * The navigation drawer: the garage, the view switcher and backup.
+ * The navigation drawer: the cars, the views of the open one, and Settings.
  *
- * Every callback is the screen's to act on, including closing the drawer, so
- * this holds no state of its own. Note that choosing a car, a view, or import
- * or export closes the drawer, while adding a car does not - the dialog opens
+ * Import, export and the theme moved to Settings; the drawer is for getting
+ * around. Every callback is the screen's to act on, including closing the
+ * drawer, so this holds no state of its own. Choosing a car, a view or
+ * Settings closes the drawer, while adding a car does not - the dialog opens
  * over it and the drawer is still there behind.
  */
 @Composable
@@ -28,20 +30,15 @@ fun GarageDrawer(
     cars: List<Car>,
     selectedCar: Car?,
     currentTab: String,
-    hasDataToExport: Boolean,
     onSelectCar: (Car) -> Unit,
     onOpenGarage: () -> Unit,
     onAddCar: () -> Unit,
     onSelectTab: (String) -> Unit,
-    onImport: () -> Unit,
-    onExport: () -> Unit,
-    onExportBackup: () -> Unit,
-    themeMode: ThemeMode,
-    onThemeModeChange: (ThemeMode) -> Unit
+    onOpenSettings: () -> Unit
 ) {
     ModalDrawerSheet(modifier = Modifier.width(300.dp)) {
-        // Scrolls: with several cars and the appearance row this outgrows a short
-        // screen, and a plain column just cuts off whatever does not fit.
+        // Scrolls, so a garage with many cars still reaches Settings on a
+        // short screen instead of cutting it off.
         Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
             Text(
                 "Your Garage",
@@ -127,82 +124,17 @@ fun GarageDrawer(
                 }
             }
 
-            // Was a weight(1f) spacer pinning this section to the bottom; weight
-            // has no meaning inside a scrolling column.
             Spacer(modifier = Modifier.height(16.dp))
             HorizontalDivider()
-            Text(
-                "Appearance",
-                modifier = Modifier.padding(16.dp),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary
-            )
-            ThemeModePicker(
-                selected = themeMode,
-                onSelect = onThemeModeChange,
-                modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
-            )
             Spacer(modifier = Modifier.height(8.dp))
-            HorizontalDivider()
-            Text(
-                "Data Management",
-                modifier = Modifier.padding(16.dp),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary
-            )
-            // Offered with no car selected too: a backup carries its own car
-            // details, so restoring onto a fresh install no longer means
-            // recreating the car by hand first.
             NavigationDrawerItem(
-                label = { Text(if (selectedCar != null) "Import from file" else "Import a car from file") },
+                label = { Text("Settings") },
+                icon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
                 selected = false,
-                onClick = onImport,
+                onClick = onOpenSettings,
                 modifier = Modifier.padding(horizontal = 12.dp)
             )
-            if (selectedCar != null && hasDataToExport) {
-                // Two exports on purpose: the CSV opens in a spreadsheet, the zip
-                // carries the photo and is the one to keep if the phone is lost.
-                NavigationDrawerItem(
-                    label = { Text("Export ${selectedCar.name} to CSV") },
-                    selected = false,
-                    onClick = onExport,
-                    modifier = Modifier.padding(horizontal = 12.dp)
-                )
-                NavigationDrawerItem(
-                    label = { Text("Full backup of ${selectedCar.name} (.zip)") },
-                    selected = false,
-                    onClick = onExportBackup,
-                    modifier = Modifier.padding(horizontal = 12.dp)
-                )
-            }
             Spacer(modifier = Modifier.height(16.dp))
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ThemeModePicker(
-    selected: ThemeMode,
-    onSelect: (ThemeMode) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val options = listOf(
-        ThemeMode.System to "System",
-        ThemeMode.Light to "Light",
-        ThemeMode.Dark to "Dark"
-    )
-    SingleChoiceSegmentedButtonRow(modifier = modifier) {
-        options.forEachIndexed { index, (mode, label) ->
-            SegmentedButton(
-                selected = selected == mode,
-                onClick = { onSelect(mode) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                // No tick: the fill already shows the choice, and a tick
-                // leaves "System" too little room in a drawer this narrow.
-                icon = {},
-                label = { Text(label, maxLines = 1) }
-            )
         }
     }
 }

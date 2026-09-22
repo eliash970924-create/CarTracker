@@ -26,6 +26,7 @@ something real - see below.
   month, with the running averages
 - **Backup** that exports and restores everything: history, the car, and the photo
 - **Dark mode**, following the phone or set by hand
+- **Settings** for the theme, the car to open at start, and backup and restore
 
 Fuel types: Petrol, Diesel, Electric, Gas, E85.
 
@@ -83,7 +84,8 @@ Single-Activity Jetpack Compose UI over a Room database.
 | `EditFuelUpDialog.kt` | editing or deleting one fill-up |
 | `EditExpenseDialog.kt` | editing or deleting one expense, and stopping a repeat |
 | `Garage.kt` | the garage screen, and which car opens at start |
-| `GarageDrawer.kt` | the drawer: cars, view switcher and backup actions |
+| `GarageDrawer.kt` | the drawer: cars, views and the way to Settings |
+| `Settings.kt` | theme, which car opens at start, import, per-car export |
 | `FuelViewModel.kt` | database access, import and the recurring-expense fill-in |
 | `Stats.kt` | consumption and cost arithmetic, and the chart series |
 | `MonthlyOverview.kt` | cost and distance per month, and the bar scaling |
@@ -97,8 +99,8 @@ Single-Activity Jetpack Compose UI over a Room database.
 The arithmetic and the file parsing are kept out of the composables as pure
 functions, so the things most able to be quietly wrong can be tested. See
 `StatsTest`, `RecurringExpensesTest`, `BackupParseTest`,
-`MonthlyOverviewTest`, `GarageTest`, `PaletteTest`, `ThemeTest` and
-`ImageSamplingTest` under `app/src/test/`; `./gradlew test` runs them.
+`MonthlyOverviewTest`, `GarageTest`, `PaletteTest`, `ThemeTest`,
+`ImageSamplingTest` and `ExportOrderTest` under `app/src/test/`; `./gradlew test` runs them.
 
 A form's contents belong to `MainActivity` rather than to the tab or dialog
 showing them, as a state holder passed down. A composable is disposed when
@@ -199,6 +201,12 @@ white included, to that and to a readable title on each car's bar.
 shorter side just covers the target - 750 KB for the garage card - off the
 main thread, and cached so the garage and the drawer share one.
 
+**Exports read the car's history from the database, not from the screen.**
+Settings exports any car, not only the open one, so it cannot use what is on
+screen. The history is read for the car chosen and put in the order the
+history lists use, so an export reads the same wherever it was started;
+`ExportOrderTest` holds that order to the fill-up query's own.
+
 **Long press edits, in both lists.** It used to delete an expense outright
 while the same gesture on a fill-up opened an editor, so one press meant two
 very different things and one of them destroyed data without asking.
@@ -268,7 +276,7 @@ abort the whole file.
 
 ## Two exports
 
-The drawer offers both, because they answer different questions.
+Settings offers both, for every car, because they answer different questions.
 
 **Export to CSV** writes the file above. It is the one to open in a
 spreadsheet.

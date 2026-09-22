@@ -21,6 +21,15 @@ class FuelViewModel(application: Application) : AndroidViewModel(application) {
     val carSummaries: Flow<List<CarSummary>> = fuelDao.getCarSummaries()
 
     fun getFuelUpsForCar(carId: Int): Flow<List<FuelUp>> = fuelDao.getAllFuelUpsForCar(carId)
+
+    /**
+     * Everything logged against a car, newest first, for export. Read from the
+     * database rather than from what is on screen, so Settings can export any
+     * car, not only the open one. Blocking: call it off the main thread.
+     */
+    fun historyForExport(carId: Int): Pair<List<FuelUp>, List<Expense>> =
+        inHistoryOrder(fuelDao.getFuelUpsListForCar(carId)) to
+            expensesInHistoryOrder(expenseDao.getExpensesListForCar(carId))
     fun getExpensesForCar(carId: Int): Flow<List<Expense>> = expenseDao.getExpensesForCar(carId)
 
     fun saveCar(name: String, fuelType: String, secondaryFuelType: String?, initialOdometer: Int, imageUri: String?, themeColor: Long?) {
