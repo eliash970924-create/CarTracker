@@ -22,6 +22,14 @@ interface FuelUpDao {
     @Query("SELECT * FROM fuel_ups WHERE carId = :carId ORDER BY dateMillis DESC, odometerKm DESC")
     fun getAllFuelUpsForCar(carId: Int): Flow<List<FuelUp>>
 
+    // One row per car that has any fill-ups, for the garage cards. A car with
+    // none is simply absent, and the card says so.
+    @Query(
+        "SELECT carId, COUNT(*) AS fillUps, MAX(odometerKm) AS latestOdometerKm, " +
+            "MAX(dateMillis) AS lastFillUpMillis FROM fuel_ups GROUP BY carId"
+    )
+    fun getCarSummaries(): Flow<List<CarSummary>>
+
     // Used by import to skip rows already present.
     @Query("SELECT * FROM fuel_ups WHERE carId = :carId")
     fun getFuelUpsListForCar(carId: Int): List<FuelUp>

@@ -1,20 +1,14 @@
 package se.eliash.cartracker
 
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -33,20 +27,28 @@ fun GarageDrawer(
     currentTab: String,
     hasDataToExport: Boolean,
     onSelectCar: (Car) -> Unit,
+    onOpenGarage: () -> Unit,
     onAddCar: () -> Unit,
     onSelectTab: (String) -> Unit,
     onImport: () -> Unit,
     onExport: () -> Unit,
     onExportBackup: () -> Unit
 ) {
-    val context = LocalContext.current
-
     ModalDrawerSheet(modifier = Modifier.width(300.dp)) {
         Text(
             "Your Garage",
             modifier = Modifier.padding(16.dp),
             style = MaterialTheme.typography.headlineMedium
         )
+        // The back gesture also leads here; this is the way that can be seen.
+        if (selectedCar != null) {
+            NavigationDrawerItem(
+                label = { Text("All cars") },
+                selected = false,
+                onClick = onOpenGarage,
+                modifier = Modifier.padding(horizontal = 12.dp)
+            )
+        }
         HorizontalDivider()
 
         cars.forEach { car ->
@@ -73,33 +75,7 @@ fun GarageDrawer(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(end = 16.dp)
                 ) {
-                    val photo = remember(car.imageUri) {
-                        try {
-                            loadCarPhoto(context, car.imageUri)?.asImageBitmap()
-                        } catch (e: Exception) {
-                            null
-                        }
-                    }
-                    if (photo != null) {
-                        Image(
-                            bitmap = photo,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.size(56.dp).clip(CircleShape)
-                        )
-                    } else {
-                        // Falls back to the car's colour, so a car without a
-                        // photo still reads as itself in the list.
-                        Box(
-                            modifier = Modifier
-                                .size(56.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    car.themeColor?.let { Color(it) }
-                                        ?: MaterialTheme.colorScheme.primary
-                                )
-                        )
-                    }
+                    CarAvatar(car = car, size = 56.dp)
                     Spacer(modifier = Modifier.width(16.dp))
 
                     Column(verticalArrangement = Arrangement.Center) {
@@ -108,14 +84,7 @@ fun GarageDrawer(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
-                        Text(
-                            if (car.secondaryFuelType != null) {
-                                "${car.fuelType} / ${car.secondaryFuelType}"
-                            } else {
-                                car.fuelType
-                            },
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+                        Text(fuelLabel(car), style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }

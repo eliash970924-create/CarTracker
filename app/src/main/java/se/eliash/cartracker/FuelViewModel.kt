@@ -18,6 +18,7 @@ class FuelViewModel(application: Application) : AndroidViewModel(application) {
     private val expenseDao = db.expenseDao()
 
     val allCars: Flow<List<Car>> = carDao.getAllCars()
+    val carSummaries: Flow<List<CarSummary>> = fuelDao.getCarSummaries()
 
     fun getFuelUpsForCar(carId: Int): Flow<List<FuelUp>> = fuelDao.getAllFuelUpsForCar(carId)
     fun getExpensesForCar(carId: Int): Flow<List<Expense>> = expenseDao.getExpensesForCar(carId)

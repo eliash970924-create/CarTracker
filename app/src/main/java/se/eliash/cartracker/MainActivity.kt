@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
@@ -15,7 +16,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -27,6 +28,10 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import se.eliash.cartracker.ui.theme.CarTallyPetrol
+
+/** Preference holding the id of the car to open at start. Absent means the garage. */
+private const val DEFAULT_CAR_KEY = "default_car_id"
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,13 +53,49 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
     // the file the settings already live in, and a new name opens an empty one.
     val prefs = remember { context.getSharedPreferences("CarTrackerPrefs", Context.MODE_PRIVATE) }
 
-    var currentTab by remember { mutableStateOf("Entries") }
-    var chartSubTab by remember { mutableStateOf("Price") }
+    // Saveable, so turning the phone does not throw away where you were.
+    var currentTab by rememberSaveable { mutableStateOf("Entries") }
+    var chartSubTab by rememberSaveable { mutableStateOf("Price") }
 
-    val cars by viewModel.allCars.collectAsState(initial = emptyList())
-    var selectedCar by remember { mutableStateOf<Car?>(null) }
+    // Null until the database has answered. Telling "not loaded yet" apart
+    // from "no cars" is what keeps the garage from flashing up for a frame
+    // before a default car opens.
+    val loadedCars by viewModel.allCars.collectAsState(initial = null)
+    val cars = loadedCars ?: emptyList()
+    val carSummaries by viewModel.carSummaries.collectAsState(initial = emptyList())
+    val summariesByCar = remember(carSummaries) { carSummaries.associateBy { it.carId } }
+
+    // The selection is an id, and the car is looked up from the live list.
+    // An edited car is then picked up without being copied back by hand, and
+    // the id survives rotation, where a Car held in remember did not - turning
+    // the phone used to jump back to the first car.
+    var selectedCarId by rememberSaveable { mutableStateOf<Int?>(null) }
+    val selectedCar = cars.firstOrNull { it.id == selectedCarId }
     var showAddCarDialog by remember { mutableStateOf(false) }
     var editingCar by remember { mutableStateOf<Car?>(null) }
+
+    // The car to open at start, if any. Kept in preferences, not the
+    // database: it is a choice about this phone, not a fact about the car.
+    var defaultCarId by remember {
+        mutableStateOf(prefs.getInt(DEFAULT_CAR_KEY, -1).takeIf { it >= 0 })
+    }
+    fun setDefaultCar(id: Int?) {
+        defaultCarId = id
+        val editor = prefs.edit()
+        if (id == null) editor.remove(DEFAULT_CAR_KEY) else editor.putInt(DEFAULT_CAR_KEY, id)
+        editor.apply()
+    }
+
+    // Decided once, on the database's first answer. Saveable, so a rotation
+    // does not re-open the default car over wherever you had got to.
+    var launchHandled by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(loadedCars) {
+        val loaded = loadedCars ?: return@LaunchedEffect
+        if (!launchHandled) {
+            launchHandled = true
+            selectedCarId = launchCar(loaded, defaultCarId)?.id
+        }
+    }
 
     // Owned here, not by the dialog: the drawer's "Add New Car" clears it and
     // the top bar's edit button fills it from the selected car.
@@ -62,8 +103,7 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
 
     // Rescues photos picked before they were copied into app storage.
     LaunchedEffect(Unit) { viewModel.adoptLegacyPhotos() }
-    LaunchedEffect(selectedCar) { selectedCar?.let { viewModel.checkRecurringExpenses(it.id) } }
-    LaunchedEffect(cars) { if (selectedCar == null && cars.isNotEmpty()) selectedCar = cars.first() }
+    LaunchedEffect(selectedCar?.id) { selectedCar?.let { viewModel.checkRecurringExpenses(it.id) } }
 
     var editingFuelUp by remember { mutableStateOf<FuelUp?>(null) }
     var editingExpense by remember { mutableStateOf<Expense?>(null) }
@@ -83,8 +123,9 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
         mutableStateOf(if (savedFuel != null && availableFuels.contains(savedFuel)) savedFuel else (availableFuels.firstOrNull() ?: "Petrol"))
     }
 
-    val fuelHistory by remember(selectedCar) { if (selectedCar != null) viewModel.getFuelUpsForCar(selectedCar!!.id) else kotlinx.coroutines.flow.emptyFlow() }.collectAsState(initial = emptyList())
-    val expenseHistory by remember(selectedCar) { if (selectedCar != null) viewModel.getExpensesForCar(selectedCar!!.id) else kotlinx.coroutines.flow.emptyFlow() }.collectAsState(initial = emptyList())
+    // Keyed on the id, so editing the car's name does not start the history over.
+    val fuelHistory by remember(selectedCarId) { selectedCarId?.let { viewModel.getFuelUpsForCar(it) } ?: kotlinx.coroutines.flow.emptyFlow() }.collectAsState(initial = emptyList())
+    val expenseHistory by remember(selectedCarId) { selectedCarId?.let { viewModel.getExpensesForCar(it) } ?: kotlinx.coroutines.flow.emptyFlow() }.collectAsState(initial = emptyList())
 
     val svLocale = Locale.forLanguageTag("sv-SE")
 
@@ -216,8 +257,6 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                         themeColor = themeColor
                     )
                     viewModel.updateCar(updated)
-                    // The selected car holds a copy, so it needs the new values too.
-                    if (selectedCar?.id == updated.id) selectedCar = updated
                 } else {
                     viewModel.saveCar(name, primaryFuel, secondaryFuel, odometer, photo, themeColor)
                 }
@@ -227,7 +266,8 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
             onDelete = {
                 editingCar?.let { car ->
                     viewModel.deleteCar(car)
-                    if (selectedCar?.id == car.id) selectedCar = null
+                    if (selectedCarId == car.id) selectedCarId = null
+                    if (defaultCarId == car.id) setDefaultCar(null)
                 }
                 showAddCarDialog = false
                 editingCar = null
@@ -277,7 +317,9 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
         )
     }
 
-    val activePrimaryColor = selectedCar?.themeColor?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
+    // With no car selected - the garage - CarTally's own petrol rather than
+    // Material's default purple.
+    val activePrimaryColor = selectedCar?.themeColor?.let { Color(it) } ?: CarTallyPetrol
     val isLightColor = activePrimaryColor.luminance() > 0.5f
 
     val dynamicThemeColors = MaterialTheme.colorScheme.copy(
@@ -287,6 +329,16 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
         onPrimaryContainer = if (isLightColor) Color(0xFF1A1A1A) else activePrimaryColor,
         secondaryContainer = activePrimaryColor.copy(alpha = 0.1f)
     )
+
+    // Back from a car goes to the garage rather than out of the app. An open
+    // drawer closes first, as it would anyway.
+    BackHandler(enabled = drawerState.isOpen || selectedCar != null) {
+        if (drawerState.isOpen) {
+            scope.launch { drawerState.close() }
+        } else {
+            selectedCarId = null
+        }
+    }
 
     MaterialTheme(colorScheme = dynamicThemeColors) {
         ModalNavigationDrawer(
@@ -298,7 +350,11 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                     currentTab = currentTab,
                     hasDataToExport = fuelHistory.isNotEmpty() || expenseHistory.isNotEmpty(),
                     onSelectCar = { car ->
-                        selectedCar = car
+                        selectedCarId = car.id
+                        scope.launch { drawerState.close() }
+                    },
+                    onOpenGarage = {
+                        selectedCarId = null
                         scope.launch { drawerState.close() }
                     },
                     // Deliberately leaves the drawer open, as before: the
@@ -344,10 +400,31 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primaryContainer, titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer)
                     )
                 },
-                floatingActionButton = { if (selectedCar == null) FloatingActionButton(onClick = { showAddCarDialog = true }) { Icon(Icons.Default.Add, null) } }
+                floatingActionButton = {
+                    if (loadedCars != null && selectedCar == null) {
+                        FloatingActionButton(onClick = { carForm.reset(); showAddCarDialog = true }) {
+                            Icon(Icons.Default.Add, "Add a car")
+                        }
+                    }
+                }
             ) { paddingValues ->
-                if (selectedCar == null) {
-                    Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.TopCenter) { Text("Press the + to add your car.", modifier = Modifier.padding(top = 150.dp)) }
+                if (loadedCars == null) {
+                    // A frame or two while the database answers. Blank rather
+                    // than the garage, which would flash before a default car.
+                    Box(modifier = Modifier.fillMaxSize().padding(paddingValues))
+                } else if (selectedCar == null) {
+                    GarageScreen(
+                        cars = cars,
+                        summaries = summariesByCar,
+                        defaultCarId = defaultCarId,
+                        locale = svLocale,
+                        onOpenCar = { selectedCarId = it.id },
+                        onToggleDefault = { car ->
+                            setDefaultCar(if (defaultCarId == car.id) null else car.id)
+                        },
+                        onImport = { importLauncher.launch(arrayOf("*/*")) },
+                        modifier = Modifier.fillMaxSize().padding(paddingValues)
+                    )
                 } else {
                     when (currentTab) {
                         "Charts" -> ChartsTab(
