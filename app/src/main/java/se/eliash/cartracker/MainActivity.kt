@@ -1,6 +1,8 @@
 package se.eliash.cartracker
 
+import android.app.Activity
 import android.content.Context
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -20,6 +22,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -28,7 +32,10 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import se.eliash.cartracker.ui.theme.CarTallyAmber
 import se.eliash.cartracker.ui.theme.CarTallyPetrol
+import se.eliash.cartracker.ui.theme.carColorScheme
+import se.eliash.cartracker.ui.theme.carTallyColorScheme
 
 /** Preference holding the id of the car to open at start. Absent means the garage. */
 private const val DEFAULT_CAR_KEY = "default_car_id"
@@ -317,18 +324,28 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
         )
     }
 
-    // With no car selected - the garage - CarTally's own petrol rather than
-    // Material's default purple.
+    // A car wears its own colour; one without a colour chosen, CarTally petrol.
     val activePrimaryColor = selectedCar?.themeColor?.let { Color(it) } ?: CarTallyPetrol
-    val isLightColor = activePrimaryColor.luminance() > 0.5f
 
-    val dynamicThemeColors = MaterialTheme.colorScheme.copy(
-        primary = activePrimaryColor,
-        onPrimary = if (isLightColor) Color.Black else Color.White,
-        primaryContainer = activePrimaryColor.copy(alpha = 0.2f),
-        onPrimaryContainer = if (isLightColor) Color(0xFF1A1A1A) else activePrimaryColor,
-        secondaryContainer = activePrimaryColor.copy(alpha = 0.1f)
-    )
+    // The garage wears CarTally's colours outright. A car keeps its own accent.
+    val dynamicThemeColors = if (selectedCar == null) {
+        carTallyColorScheme(MaterialTheme.colorScheme)
+    } else {
+        carColorScheme(MaterialTheme.colorScheme, activePrimaryColor)
+    }
+
+    // The top bar reaches up under the status bar - edge-to-edge is enforced
+    // from Android 15 for this target SDK - so the clock and battery have to
+    // suit it: light over the garage's petrol, dark over a car's pale tint.
+    // Earlier versions keep their own status bar colour, so are left alone.
+    val view = LocalView.current
+    val lightStatusIcons = dynamicThemeColors.primaryContainer.luminance() < 0.5f
+    SideEffect {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            val window = (view.context as? Activity)?.window ?: return@SideEffect
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !lightStatusIcons
+        }
+    }
 
     // Back from a car goes to the garage rather than out of the app. An open
     // drawer closes first, as it would anyway.
@@ -397,12 +414,24 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                                 }) { Icon(Icons.Default.Edit, "Edit Car") }
                             }
                         },
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primaryContainer, titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer)
+                        // The icons follow the title. Left to default they stay dark, and
+                        // the menu icon disappears into the garage's petrol.
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            navigationIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            actionIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
                     )
                 },
                 floatingActionButton = {
                     if (loadedCars != null && selectedCar == null) {
-                        FloatingActionButton(onClick = { carForm.reset(); showAddCarDialog = true }) {
+                        // The logo's drop and its gauge: amber, with the + in petrol.
+                        FloatingActionButton(
+                            onClick = { carForm.reset(); showAddCarDialog = true },
+                            containerColor = CarTallyAmber,
+                            contentColor = CarTallyPetrol
+                        ) {
                             Icon(Icons.Default.Add, "Add a car")
                         }
                     }

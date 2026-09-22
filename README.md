@@ -96,7 +96,7 @@ Single-Activity Jetpack Compose UI over a Room database.
 The arithmetic and the file parsing are kept out of the composables as pure
 functions, so the things most able to be quietly wrong can be tested. See
 `StatsTest`, `RecurringExpensesTest`, `BackupParseTest`,
-`MonthlyOverviewTest` and `GarageTest` under `app/src/test/`; `./gradlew test` runs them.
+`MonthlyOverviewTest`, `GarageTest` and `PaletteTest` under `app/src/test/`; `./gradlew test` runs them.
 
 A form's contents belong to `MainActivity` rather than to the tab or dialog
 showing them, as a state holder passed down. A composable is disposed when
@@ -171,6 +171,19 @@ the Car itself meant a stale copy after every edit, refreshed by hand, and it
 did not survive rotation: turning the phone jumped back to the first car.
 The id is saveable, and the launch decision is made once, so a rotation does
 not re-open the default car over wherever you had got to.
+
+**Accent surfaces are solid tints, never see-through.** They were once 20%
+opaque copies of the accent colour. On the page that looks like a tint, but
+a translucent surface shows whatever is behind it - on the add button, its
+own shadow, as a lighter square - and petrol at 20% reads as plain grey. The
+tints are now blended over the page colour, which looks the same and hides
+what is underneath.
+
+**The garage wears CarTally's colours; a car wears its own.** Petrol bar,
+ivory page, white cards and an amber add button in the garage; inside a car,
+the colour chosen for it. The pairings are held to WCAG contrast by
+`PaletteTest` - the logo's amber is only 2.1:1 on white, so the star and
+anything else on a card use a deeper amber or petrol.
 
 **Long press edits, in both lists.** It used to delete an expense outright
 while the same gesture on a fill-up opened an editor, so one press meant two
