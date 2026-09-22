@@ -44,6 +44,8 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
+    // Still "CarTrackerPrefs" after the rename to CarTally, deliberately: this is
+    // the file the settings already live in, and a new name opens an empty one.
     val prefs = remember { context.getSharedPreferences("CarTrackerPrefs", Context.MODE_PRIVATE) }
 
     var currentTab by remember { mutableStateOf("Entries") }
@@ -329,7 +331,7 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
             Scaffold(
                 topBar = {
                     TopAppBar(
-                        title = { Text(selectedCar?.name ?: "Car Tracker") },
+                        title = { Text(selectedCar?.name ?: "CarTally") },
                         navigationIcon = { IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Default.Menu, null) } },
                         actions = {
                             if (selectedCar != null) {

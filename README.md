@@ -1,10 +1,15 @@
-# CarTracker
+# CarTally
 
 An Android app for tracking what a car actually costs to run: fuel, service,
 insurance and everything else, per car, with the figures worked out for you.
 
 Built for Swedish use, so running costs are quoted in **kr/mil** (per 10 km)
 and consumption per 100 km.
+
+The app was called CarTracker until it was renamed; the repository, the
+package (`se.eliash.cartracker`) and the on-device storage names still use
+the old spelling. Those are not visible, and renaming any of them would cost
+something real - see below.
 
 ## What it does
 
@@ -136,6 +141,20 @@ are kept either way — switching a repeat off ends it, it does not erase it.
 **Deleting a car asks first, and says what goes with it.** The button sits
 directly under a field worth editing, and the car takes every fill-up and
 expense with it through the foreign key cascade. The confirmation counts them.
+
+**The rename to CarTally stopped at what you can see.** The name under the
+icon and in the top bar changed; three things kept the old spelling on
+purpose. The package, because it is the app's identity on the device and a
+new one installs as a separate, empty app. The database file and the
+preferences file, because they are where the data already is and a new name
+opens a new, empty one. Each carries a comment saying so.
+
+**The launcher icon's gauge is a hole, not paint.** Themed icons (Android 13+)
+recolour every opaque pixel to a single tint, so a gauge painted petrol on
+amber would vanish into a plain drop. Cut through, it shows whatever is
+behind it - petrol normally, the theme colour when themed - which is also why
+the monochrome layer reuses the foreground unchanged. The legacy raster
+icons for Android 7 are rendered from the same path.
 
 **Long press edits, in both lists.** It used to delete an expense outright
 while the same gesture on a fill-up opened an editor, so one press meant two

@@ -41,6 +41,8 @@ abstract class AppDatabase : RoomDatabase() {
                 Room.databaseBuilder(
                     context,
                     AppDatabase::class.java,
+                    // Kept from before the rename to CarTally. It is the file the
+                    // history is in; renaming it would open a new, empty database.
                     "car_tracker_database"
                 )
                     .addMigrations(*ALL_MIGRATIONS)
