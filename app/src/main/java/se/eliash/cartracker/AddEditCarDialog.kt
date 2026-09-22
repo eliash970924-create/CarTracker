@@ -94,11 +94,15 @@ fun rememberCarFormState(): CarFormState = remember { CarFormState() }
 fun AddEditCarDialog(
     form: CarFormState,
     isEditMode: Boolean,
+    /** How much goes with the car, so the confirmation can say what is at stake. */
+    fuelUpCount: Int = 0,
+    expenseCount: Int = 0,
     onSave: (name: String, primaryFuel: String, secondaryFuel: String?, odometer: Int, photo: String?, themeColor: Long) -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    var confirmingDelete by remember { mutableStateOf(false) }
     var primaryExpanded by remember { mutableStateOf(false) }
     var secondaryExpanded by remember { mutableStateOf(false) }
     var showCustomColorSlider by remember { mutableStateOf(false) }
@@ -145,6 +149,44 @@ fun AddEditCarDialog(
                     shape = CircleShape
                 )
                 .clickable { form.themeColor = colour; showCustomColorSlider = false }
+        )
+    }
+
+    if (confirmingDelete) {
+        val carName = form.name.ifBlank { "this car" }
+        AlertDialog(
+            onDismissRequest = { confirmingDelete = false },
+            title = { Text("Delete $carName?") },
+            text = {
+                val parts = buildList {
+                    if (fuelUpCount > 0) {
+                        add("$fuelUpCount ${if (fuelUpCount == 1) "fill-up" else "fill-ups"}")
+                    }
+                    if (expenseCount > 0) {
+                        add("$expenseCount ${if (expenseCount == 1) "expense" else "expenses"}")
+                    }
+                }
+                Text(
+                    if (parts.isEmpty()) {
+                        "Nothing is logged against it yet, so only the car itself goes."
+                    } else {
+                        // The one way back, and only if it was taken before
+                        // the tap rather than after.
+                        "Everything logged against it goes too: " +
+                            "${parts.joinToString(" and ")}. This cannot be undone.\n\n" +
+                            "A backup exported earlier can be imported into a new car."
+                    }
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { confirmingDelete = false; onDelete() },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingDelete = false }) { Text("Cancel") }
+            }
         )
     }
 
@@ -288,7 +330,10 @@ fun AddEditCarDialog(
                 if (isEditMode) {
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedButton(
-                        onClick = onDelete,
+                        // Asks first. This button sits directly under a field
+                        // worth editing, and the car takes every fill-up and
+                        // expense logged against it on the way out.
+                        onClick = { confirmingDelete = true },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)
                     ) {
