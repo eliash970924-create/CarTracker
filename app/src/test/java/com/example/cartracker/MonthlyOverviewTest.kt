@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import java.util.Calendar
+import java.util.Locale
 import org.junit.Test
 
 class MonthlyOverviewTest {
@@ -221,5 +222,70 @@ class MonthlyOverviewTest {
         assertEquals(emptyList<MonthSummary>(), overview.months)
         assertEquals(0.0, overview.averageMonthlyCost, 0.001)
         assertEquals(0.0, overview.averageMonthlyDistance, 0.001)
+    }
+
+    // --- what the overview screen draws with ---
+
+    private fun summary(
+        year: Int, month: Int,
+        fuelCost: Double = 0.0,
+        expenseCost: Double = 0.0,
+        distanceKm: Double = 0.0
+    ) = MonthSummary(year, month, fuelCost, expenseCost, distanceKm)
+
+    @Test
+    fun `bar fractions scale from zero, not from the smallest value`() {
+        val fractions = barFractions(listOf(100.0, 50.0, 25.0))
+        assertEquals(1f, fractions[0], 0.001f)
+        assertEquals(0.5f, fractions[1], 0.001f)
+        assertEquals(0.25f, fractions[2], 0.001f)
+    }
+
+    @Test
+    fun `a run of zeroes gives flat bars rather than dividing by zero`() {
+        assertEquals(listOf(0f, 0f, 0f), barFractions(listOf(0.0, 0.0, 0.0)))
+    }
+
+    @Test
+    fun `no months means no bars`() {
+        assertEquals(emptyList<Float>(), barFractions(emptyList()))
+    }
+
+    @Test
+    fun `a single month fills the chart`() {
+        assertEquals(listOf(1f), barFractions(listOf(742.0)))
+    }
+
+    @Test
+    fun `a quiet month among busy ones is drawn at zero`() {
+        val fractions = barFractions(listOf(800.0, 0.0, 400.0))
+        assertEquals(0f, fractions[1], 0.001f)
+        assertEquals(0.5f, fractions[2], 0.001f)
+    }
+
+    @Test
+    fun `month labels carry the year, short ones do not`() {
+        val march = summary(2026, Calendar.MARCH)
+        assertEquals("Mar 2026", monthLabel(march, Locale.ENGLISH))
+        assertEquals("Mar", shortMonthLabel(march, Locale.ENGLISH))
+    }
+
+    @Test
+    fun `the first month of the year labels as January, not December`() {
+        assertEquals("Jan 2026", monthLabel(summary(2026, Calendar.JANUARY), Locale.ENGLISH))
+        assertEquals("Dec 2025", monthLabel(summary(2025, Calendar.DECEMBER), Locale.ENGLISH))
+    }
+
+    @Test
+    fun `the months a real overview produces label as themselves`() {
+        val overview = monthlyOverview(
+            fuelUps = listOf(fill(2025, Calendar.NOVEMBER, 10, odometer = 10000, cost = 600.0)),
+            expenses = emptyList(),
+            now = at(2026, Calendar.JANUARY, 15)
+        )
+        assertEquals(
+            listOf("Nov 2025", "Dec 2025"),
+            overview.months.map { monthLabel(it, Locale.ENGLISH) }
+        )
     }
 }

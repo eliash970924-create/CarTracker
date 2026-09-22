@@ -1,6 +1,8 @@
 package com.example.cartracker
 
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Locale
 
 /** What one calendar month cost and how far it was driven. */
 data class MonthSummary(
@@ -142,3 +144,32 @@ fun monthlyOverview(
         averageMonthlyDistance = months.sumOf { it.distanceKm } / months.size
     )
 }
+
+/**
+ * Each value as a fraction of the largest, for drawing bars.
+ *
+ * Scaled from zero rather than from the smallest value, so a month that cost
+ * half as much is drawn half as tall. A run of zeroes gives zero-height bars
+ * rather than dividing by zero.
+ */
+fun barFractions(values: List<Double>): List<Float> {
+    val max = values.maxOrNull() ?: 0.0
+    if (max <= 0.0) return values.map { 0f }
+    return values.map { (it / max).coerceIn(0.0, 1.0).toFloat() }
+}
+
+/** "mar 2026", in the given locale. */
+fun monthLabel(summary: MonthSummary, locale: Locale): String =
+    SimpleDateFormat("MMM yyyy", locale).format(monthStart(summary).time)
+
+/** Just "mar", for a bar too narrow to carry the year. */
+fun shortMonthLabel(summary: MonthSummary, locale: Locale): String =
+    SimpleDateFormat("MMM", locale).format(monthStart(summary).time)
+
+private fun monthStart(summary: MonthSummary): Calendar =
+    Calendar.getInstance().apply {
+        clear()
+        set(Calendar.YEAR, summary.year)
+        set(Calendar.MONTH, summary.month)
+        set(Calendar.DAY_OF_MONTH, 1)
+    }
