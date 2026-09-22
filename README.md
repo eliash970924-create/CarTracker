@@ -48,7 +48,7 @@ Single-Activity Jetpack Compose UI over a Room database.
 | `EntriesTab.kt` | the fill-up form, the dashboard figures and the history list |
 | `ExpensesTab.kt` | the expense form, total and history |
 | `ChartsTab.kt` | fuel price, consumption and monthly charts |
-| `MonthlySection.kt` | the monthly overview: averages, bars and the month list |
+| `MonthlySection.kt` | the monthly overview: averages, tappable bars and the month list |
 | `AddEditCarDialog.kt` | the add/edit car form |
 | `EditFuelUpDialog.kt` | editing or deleting one fill-up |
 | `EditExpenseDialog.kt` | editing or deleting one expense, and stopping a repeat |
@@ -109,6 +109,10 @@ months straight back in. For the same reason, deleting a single month of a
 live repeat does not stick: turn the repeat off first. The dialog says so
 rather than letting it look like the delete failed. Months already recorded
 are kept either way — switching a repeat off ends it, it does not erase it.
+
+**Deleting a car asks first, and says what goes with it.** The button sits
+directly under a field worth editing, and the car takes every fill-up and
+expense with it through the foreign key cascade. The confirmation counts them.
 
 **Long press edits, in both lists.** It used to delete an expense outright
 while the same gesture on a fill-up opened an editor, so one press meant two

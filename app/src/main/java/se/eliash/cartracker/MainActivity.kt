@@ -198,6 +198,10 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
         AddEditCarDialog(
             form = carForm,
             isEditMode = editingCar != null,
+            // Only ever the selected car is edited, so its loaded history is
+            // the history the confirmation is counting.
+            fuelUpCount = if (editingCar != null) fuelHistory.size else 0,
+            expenseCount = if (editingCar != null) expenseHistory.size else 0,
             onSave = { name, primaryFuel, secondaryFuel, odometer, photo, themeColor ->
                 val editing = editingCar
                 if (editing != null) {
