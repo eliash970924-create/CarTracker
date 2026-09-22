@@ -205,6 +205,34 @@ class FuelViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteExpense(expense: Expense) { viewModelScope.launch(Dispatchers.IO) { expenseDao.deleteExpense(expense) } }
+
+    /**
+     * Saves an edited expense, and keeps the repeat consistent with it.
+     *
+     * Switching a repeat off has to clear the flag across the whole series,
+     * not just the row being edited. The generator seeds from the latest row
+     * still marked monthly, so clearing one leaves the next one down to take
+     * over and fill the months straight back in.
+     *
+     * The series is found from [original], because the edit may have renamed
+     * the description - which is half of what identifies a series - and the
+     * rows still to be cleared carry the old name.
+     */
+    fun updateExpense(original: Expense, updated: Expense) {
+        viewModelScope.launch(Dispatchers.IO) {
+            expenseDao.updateExpense(updated)
+
+            val stoppedRepeating = original.isMonthly && !updated.isMonthly
+            if (stoppedRepeating) {
+                seriesOf(expenseDao.getExpensesListForCar(updated.carId), original)
+                    .filter { it.id != updated.id && it.isMonthly }
+                    .forEach { expenseDao.updateExpense(it.copy(isMonthly = false)) }
+            } else if (updated.isMonthly) {
+                // A new or renamed repeat may have months owing behind it.
+                fillRecurringExpenses(updated.carId)
+            }
+        }
+    }
     fun updateFuelEntry(fuelUp: FuelUp) { viewModelScope.launch(Dispatchers.IO) { fuelDao.updateFuelUp(fuelUp) } }
     fun deleteFuelEntry(fuelUp: FuelUp) { viewModelScope.launch(Dispatchers.IO) { fuelDao.deleteFuelUp(fuelUp) } }
 }

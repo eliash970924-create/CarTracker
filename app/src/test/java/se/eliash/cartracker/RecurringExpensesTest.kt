@@ -129,4 +129,102 @@ class RecurringExpensesTest {
     fun `no expenses at all is handled`() {
         assertEquals(emptyList<Expense>(), missingRecurringExpenses(emptyList(), at(2026, Calendar.JUNE)))
     }
+
+    // --- switching a repeat off ---
+
+    /** What the view model does when the repeat checkbox is unticked. */
+    private fun stopRepeating(all: List<Expense>, edited: Expense): List<Expense> {
+        val series = seriesOf(all, edited).map { it.id }.toSet()
+        return all.map { if (it.id in series) it.copy(isMonthly = false) else it }
+    }
+
+    @Test
+    fun `a series is found by category and description, not by cost`() {
+        val rows = listOf(
+            expense(1, 2026, Calendar.JANUARY, 450.0),
+            expense(2, 2026, Calendar.FEBRUARY, 500.0),
+            expense(3, 2026, Calendar.FEBRUARY, 300.0, category = "Parking")
+        )
+        assertEquals(listOf(1, 2), seriesOf(rows, rows[0]).map { it.id })
+    }
+
+    @Test
+    fun `two repeats sharing a category stay separate series`() {
+        val rows = listOf(
+            expense(1, 2026, Calendar.JANUARY, 450.0, description = "Car insurance"),
+            expense(2, 2026, Calendar.JANUARY, 120.0, description = "Breakdown cover")
+        )
+        assertEquals(listOf(1), seriesOf(rows, rows[0]).map { it.id })
+        assertEquals(listOf(2), seriesOf(rows, rows[1]).map { it.id })
+    }
+
+    @Test
+    fun `clearing the whole series actually stops the generator`() {
+        val rows = listOf(
+            expense(1, 2026, Calendar.JANUARY, 450.0),
+            expense(2, 2026, Calendar.FEBRUARY, 450.0),
+            expense(3, 2026, Calendar.MARCH, 450.0)
+        )
+        val stopped = stopRepeating(rows, rows[2])
+
+        assertEquals(
+            emptyList<Expense>(),
+            missingRecurringExpenses(stopped, at(2026, Calendar.JUNE))
+        )
+        // The history is kept; only the repeat is switched off.
+        assertEquals(3, stopped.size)
+        assertTrue(stopped.none { it.isMonthly })
+    }
+
+    @Test
+    fun `clearing only the edited row lets the next one down take over`() {
+        // This is the bug the series-wide clear exists to prevent: unticking
+        // the latest row alone leaves February seeding the generator again.
+        val rows = listOf(
+            expense(1, 2026, Calendar.JANUARY, 450.0),
+            expense(2, 2026, Calendar.FEBRUARY, 450.0),
+            expense(3, 2026, Calendar.MARCH, 450.0)
+        )
+        val onlyLatestCleared = rows.map { if (it.id == 3) it.copy(isMonthly = false) else it }
+
+        val generated = missingRecurringExpenses(onlyLatestCleared, at(2026, Calendar.JUNE))
+        assertTrue("the repeat should have carried on", generated.isNotEmpty())
+        assertEquals(
+            listOf(
+                2026 to Calendar.MARCH, 2026 to Calendar.APRIL,
+                2026 to Calendar.MAY, 2026 to Calendar.JUNE
+            ),
+            generated.map(::monthOf)
+        )
+        // Worse than merely carrying on: March already exists as the row that
+        // was unticked, so it comes back a second time.
+        assertTrue(generated.any { monthOf(it) == 2026 to Calendar.MARCH })
+    }
+
+    @Test
+    fun `stopping one repeat leaves another running`() {
+        val rows = listOf(
+            expense(1, 2026, Calendar.JANUARY, 450.0, description = "Car insurance"),
+            expense(2, 2026, Calendar.JANUARY, 120.0, description = "Breakdown cover")
+        )
+        val stopped = stopRepeating(rows, rows[0])
+
+        val generated = missingRecurringExpenses(stopped, at(2026, Calendar.MARCH))
+        assertTrue(generated.all { it.description == "Breakdown cover" })
+        assertEquals(2, generated.size)
+    }
+
+    @Test
+    fun `a renamed series is still found through the row it came from`() {
+        // The edit renames the description, so the siblings left to clear
+        // carry the old one. Looking them up by the original is what finds
+        // them.
+        val original = expense(3, 2026, Calendar.MARCH, 450.0, description = "Insurance")
+        val rows = listOf(
+            expense(1, 2026, Calendar.JANUARY, 450.0, description = "Insurance"),
+            expense(2, 2026, Calendar.FEBRUARY, 450.0, description = "Insurance"),
+            original.copy(description = "Car insurance")
+        )
+        assertEquals(listOf(1, 2), seriesOf(rows, original).map { it.id })
+    }
 }

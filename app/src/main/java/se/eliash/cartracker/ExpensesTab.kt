@@ -62,7 +62,7 @@ fun ExpensesTab(
     form: ExpenseFormState,
     currencyLocale: Locale,
     onSave: (dateMillis: Long, category: String, description: String, cost: Double, isMonthly: Boolean) -> Unit,
-    onDelete: (Expense) -> Unit,
+    onEdit: (Expense) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val total = remember(expenses) { expenses.sumOf { it.costSek } }
@@ -198,9 +198,12 @@ fun ExpensesTab(
         ) {
             itemsIndexed(items = expenses, key = { _, item -> item.id }) { _, expense ->
                 Card(
+                    // Long press opens the editor, matching the fill-up
+                    // list. It used to delete the row outright, so the same
+                    // gesture meant two very different things.
                     modifier = Modifier.fillMaxWidth().combinedClickable(
                         onClick = {},
-                        onLongClick = { onDelete(expense) }
+                        onLongClick = { onEdit(expense) }
                     ),
                     elevation = CardDefaults.cardElevation(2.dp)
                 ) {

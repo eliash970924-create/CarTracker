@@ -64,6 +64,7 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
     LaunchedEffect(cars) { if (selectedCar == null && cars.isNotEmpty()) selectedCar = cars.first() }
 
     var editingFuelUp by remember { mutableStateOf<FuelUp?>(null) }
+    var editingExpense by remember { mutableStateOf<Expense?>(null) }
 
     // Owned here, like the expense form, so a half-filled entry survives
     // leaving the tab.
@@ -254,6 +255,22 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
         )
     }
 
+    editingExpense?.let { editing ->
+        EditExpenseDialog(
+            expense = editing,
+            currencyLocale = svLocale,
+            onSave = { updated ->
+                viewModel.updateExpense(original = editing, updated = updated)
+                editingExpense = null
+            },
+            onDelete = {
+                viewModel.deleteExpense(editing)
+                editingExpense = null
+            },
+            onDismiss = { editingExpense = null }
+        )
+    }
+
     val activePrimaryColor = selectedCar?.themeColor?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
     val isLightColor = activePrimaryColor.luminance() > 0.5f
 
@@ -345,7 +362,7 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                             onSave = { date, category, description, cost, isMonthly ->
                                 viewModel.saveExpense(selectedCar!!.id, date, category, description, cost, isMonthly)
                             },
-                            onDelete = { viewModel.deleteExpense(it) },
+                            onEdit = { editingExpense = it },
                             modifier = Modifier.fillMaxSize().padding(paddingValues)
                         )
 

@@ -3,6 +3,36 @@ package se.eliash.cartracker
 import java.util.Calendar
 
 /**
+ * What makes two rows the same recurring expense: category and description,
+ * never the cost.
+ *
+ * Including the cost - as this once did - makes a price change look like a
+ * separate expense: the old amount keeps generating beside the new one, every
+ * month, for ever. An insurance premium going up silently doubled the bill.
+ *
+ * [missingRecurringExpenses] and [seriesOf] must agree on this, or switching a
+ * series off would leave behind a row the generator still treats as a seed.
+ */
+fun recurringKey(expense: Expense): String = "${expense.category}_${expense.description}"
+
+/**
+ * Every row belonging to the same recurring expense as [member], the row
+ * itself included.
+ *
+ * Switching a repeat off has to clear the flag across all of them. Clearing it
+ * on one row only moves the problem: the generator seeds from the latest row
+ * still marked monthly, so the next one down takes over and fills the months
+ * back in.
+ *
+ * Rows are matched on [member]'s own key, so this still finds the series when
+ * the caller is part-way through renaming it.
+ */
+fun seriesOf(expenses: List<Expense>, member: Expense): List<Expense> {
+    val key = recurringKey(member)
+    return expenses.filter { recurringKey(it) == key }
+}
+
+/**
  * Works out which months of a recurring expense are missing, so they can be
  * filled in up to the current month.
  *
@@ -13,11 +43,7 @@ fun missingRecurringExpenses(expenses: List<Expense>, now: Calendar): List<Expen
     val monthly = expenses.filter { it.isMonthly }
     if (monthly.isEmpty()) return emptyList()
 
-    // Grouped by category and description only. Including the cost - as this
-    // once did - makes a price change look like a separate expense: the old
-    // amount keeps generating beside the new one, every month, for ever. An
-    // insurance premium going up silently doubled the bill.
-    val grouped = monthly.groupBy { "${it.category}_${it.description}" }
+    val grouped = monthly.groupBy(::recurringKey)
 
     val generated = mutableListOf<Expense>()
 
