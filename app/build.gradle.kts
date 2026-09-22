@@ -68,5 +68,8 @@ dependencies {
     implementation("androidx.room:room-ktx:$room_version") // Adds support for Coroutines
     ksp("androidx.room:room-compiler:$room_version")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1")
+    // Automatic backup: runs on a schedule even when the app is closed, and
+    // survives a reboot. It uses Room 2.6.1 internally, the same as the app.
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
     implementation("androidx.compose.material:material-icons-extended")
 }

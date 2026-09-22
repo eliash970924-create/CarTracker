@@ -25,8 +25,11 @@ something real - see below.
 - **Monthly overview** of what the car costs and how far it goes, month by
   month, with the running averages
 - **Backup** that exports and restores everything: history, the car, and the photo
+- **Automatic backup** of the whole garage to one file - on Google Drive or the
+  phone - kept up to date daily or weekly
 - **Dark mode**, following the phone or set by hand
-- **Settings** for the theme, the car to open at start, and backup and restore
+- **Settings** for the theme, the car to open at start, automatic backup, and
+  backup and restore
 
 Fuel types: Petrol, Diesel, Electric, Gas, E85.
 
@@ -85,13 +88,14 @@ Single-Activity Jetpack Compose UI over a Room database.
 | `EditExpenseDialog.kt` | editing or deleting one expense, and stopping a repeat |
 | `Garage.kt` | the garage screen, and which car opens at start |
 | `GarageDrawer.kt` | the drawer: cars, views and the way to Settings |
-| `Settings.kt` | theme, which car opens at start, import, per-car export |
+| `Settings.kt` | theme, which car opens at start, automatic backup, import, per-car export |
 | `FuelViewModel.kt` | database access, import and the recurring-expense fill-in |
 | `Stats.kt` | consumption and cost arithmetic, and the chart series |
 | `MonthlyOverview.kt` | cost and distance per month, and the bar scaling |
 | `RecurringExpenses.kt` | which months of a monthly expense are missing |
 | `CsvBackup.kt` | the backup file format: writing, escaping and parsing |
-| `BackupArchive.kt` | the zip backup, and telling a zip from a bare CSV |
+| `BackupArchive.kt` | the zip backup in both layouts, and telling a zip from a bare CSV |
+| `AutoBackup.kt` | automatic backup: the chosen file, the schedule, the worker and its status |
 | `CarPhotos.kt` | car photos in app-private storage |
 | `Migrations.kt` | schema migrations |
 | `AppDatabase.kt`, `*Dao.kt`, `Car/FuelUp/Expense.kt` | Room |
@@ -100,7 +104,8 @@ The arithmetic and the file parsing are kept out of the composables as pure
 functions, so the things most able to be quietly wrong can be tested. See
 `StatsTest`, `RecurringExpensesTest`, `BackupParseTest`,
 `MonthlyOverviewTest`, `GarageTest`, `PaletteTest`, `ThemeTest`,
-`ImageSamplingTest` and `ExportOrderTest` under `app/src/test/`; `./gradlew test` runs them.
+`ImageSamplingTest`, `ExportOrderTest`, `GarageBackupTest`,
+`AutoBackupStatusTest` and `ImportMessageTest` under `app/src/test/`; `./gradlew test` runs them.
 
 A form's contents belong to `MainActivity` rather than to the tab or dialog
 showing them, as a state holder passed down. A composable is disposed when
@@ -240,6 +245,26 @@ silently stop appearing. The bytes are copied verbatim rather than re-encoded,
 because writing a `Bitmap` back out would drop the EXIF orientation tag and
 leave photos sideways.
 
+**Automatic backup writes to a file the user picks, not through the Drive
+API.** The system's "save as" screen already lists Google Drive, the phone's
+storage and any other installed provider, and a file chosen there can be kept
+writable across restarts. So backing up to Drive needs no sign-in, no API keys
+and no Cloud project, and works just as well for someone who would rather keep
+it on the phone or a memory card. WorkManager runs it, so it survives the app
+being closed and the phone restarting.
+
+**It is a mirror, not a history.** Each run replaces the file with the garage
+as it is now. Drive normally keeps earlier versions of a file for about a
+month, which may cover the occasional "I want last week's back", but that is
+Drive's doing, not the app's. The one exception is a
+garage with no cars, which is never written: if everything were deleted by
+mistake, the last backup is exactly what is needed, so it is left alone.
+
+**A late backup is shown as a problem, not just a failed one.** Some phones'
+battery savers stop scheduled work without a word, and a backup nobody knows
+has stopped is worse than none. More than twice the interval since the last
+success turns the status red and suggests "Back up now".
+
 ## The backup format
 
 Fill-ups first, then optional expense and car sections:
@@ -276,7 +301,8 @@ abort the whole file.
 
 ## Two exports
 
-Settings offers both, for every car, because they answer different questions.
+Settings offers both, for every car, because they answer different questions,
+and automatic backup on top for the whole garage.
 
 **Export to CSV** writes the file above. It is the one to open in a
 spreadsheet.
@@ -284,6 +310,20 @@ spreadsheet.
 **Full backup (.zip)** writes that same CSV as `backup.csv` alongside the car
 photo under `photos/`. It is the one to keep if the phone is lost, because a
 CSV cannot carry an image and a restore from one arrives without the picture.
+
+**Automatic backup** writes the whole garage as one zip, one folder per car,
+each folder exactly the single-car layout:
+
+```
+cars/1/backup.csv
+cars/1/photos/car_a1b2.img
+cars/2/backup.csv
+```
+
+Restoring it imports every car in turn and reports a total. A photo is only
+kept if its folder also has a CSV, so a damaged archive cannot leave orphaned
+images behind. A car that already exists takes the photo from the backup only
+if it has none of its own.
 
 Import takes either, decided by the file's first four bytes, so every file the
 app has ever written still restores. A photo from an archive is saved under a

@@ -2,6 +2,7 @@ package se.eliash.cartracker
 
 import android.app.Activity
 import android.content.Context
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
@@ -32,7 +33,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 import se.eliash.cartracker.ui.theme.CarTallyAmber
 import se.eliash.cartracker.ui.theme.ThemeMode
@@ -65,7 +65,7 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
 
     // Still "CarTrackerPrefs" after the rename to CarTally, deliberately: this is
     // the file the settings already live in, and a new name opens an empty one.
-    val prefs = remember { context.getSharedPreferences("CarTrackerPrefs", Context.MODE_PRIVATE) }
+    val prefs = remember { context.getSharedPreferences(APP_PREFS, Context.MODE_PRIVATE) }
 
     // Saveable, so turning the phone does not throw away where you were.
     var currentTab by rememberSaveable { mutableStateOf("Entries") }
@@ -157,9 +157,8 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
     }
 
-    val formatBackupDate: (Long) -> String = { millis ->
-        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(millis))
-    }
+    // Shared with automatic backup: import matches existing rows by this day.
+    val formatBackupDate: (Long) -> String = ::formatBackupDay
 
     // Both exports read the chosen car's history from the database rather than
     // what is on screen, so Settings can export any car, not only the open one.
@@ -220,10 +219,10 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
             val fallbackCarName = selectedCar?.name
             scope.launch(Dispatchers.IO) {
                 try {
-                    // Accepts a zip backup or a bare CSV: every file the app
-                    // has written still imports.
-                    val backup = readBackup(context) { context.contentResolver.openInputStream(it) }
-                    if (backup == null) {
+                    // A zip in either layout - one car or the whole garage - or
+                    // a bare CSV: every file the app has written still imports.
+                    val backups = readBackup(context) { context.contentResolver.openInputStream(it) }
+                    if (backups == null) {
                         launch(Dispatchers.Main) {
                             Toast.makeText(context, "Could not read that file", Toast.LENGTH_LONG).show()
                         }
@@ -231,40 +230,65 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                     }
 
                     val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                    val parsed = parseBackupCsv(backup.csv) { text ->
-                        // parse throws on anything it does not recognise, and
-                        // an unreadable row is skipped rather than aborting.
-                        runCatching { dateFormat.parse(text)?.time }.getOrNull()
+                    val parsed = backups.map { backup ->
+                        backup to parseBackupCsv(backup.csv) { text ->
+                            // parse throws on anything it does not recognise, and
+                            // an unreadable row is skipped rather than aborting.
+                            runCatching { dateFormat.parse(text)?.time }.getOrNull()
+                        }
+                    }
+                    val unreadable = parsed.sumOf { (_, csv) -> csv.unreadableRows }
+                    val cars = parsed.map { (backup, csv) ->
+                        FuelViewModel.CarImport(
+                            // The stored name comes from the archive read, not the
+                            // car row: the photo is saved under a fresh name.
+                            car = csv.car?.copy(photo = backup.photoName),
+                            fuelUps = csv.fuelUps,
+                            expenses = csv.expenses
+                        )
                     }
 
-                    viewModel.importBackup(
-                        fallbackCarId = fallbackCarId,
-                        // The stored name comes from the archive read, not the
-                        // car row: the photo is saved under a fresh name.
-                        car = parsed.car?.copy(photo = backup.photoName),
-                        fuelUps = parsed.fuelUps,
-                        expenses = parsed.expenses,
-                        dayOf = formatBackupDate
-                    ) { result ->
-                        val message = when {
-                            result == null ->
-                                "Select a car first, or import a file that includes car details"
-                            else -> buildString {
-                                val name = result.carName ?: fallbackCarName ?: "car"
-                                append(if (result.carCreated) "Created $name. " else "$name: ")
-                                append("added ${result.fuelAdded} fill-ups, ${result.expensesAdded} expenses")
-                                val skipped = result.fuelSkipped + result.expensesSkipped
-                                if (skipped > 0) append(" - skipped $skipped already present")
-                                if (parsed.unreadableRows > 0) {
-                                    append(" - ${parsed.unreadableRows} rows could not be read")
-                                }
-                            }
-                        }
-                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    viewModel.importBackups(fallbackCarId, cars, dayOf = formatBackupDate) { results ->
+                        Toast.makeText(
+                            context, importMessage(results, fallbackCarName, unreadable), Toast.LENGTH_LONG
+                        ).show()
                     }
                 } catch (e: Exception) { launch(Dispatchers.Main) { Toast.makeText(context, "Import failed", Toast.LENGTH_LONG).show() } }
             }
         }
+    }
+
+    // Automatic backup: the file is chosen here, once; the scheduled work does
+    // the rest. The state follows what the worker records, so Settings updates
+    // the moment a backup finishes.
+    val autoBackup = rememberAutoBackupState(prefs)
+    val autoBackupFileLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        try {
+            // Kept across restarts. Without this the grant lasts only until
+            // the app is closed, and every scheduled run would fail.
+            context.contentResolver.takePersistableUriPermission(uri, BACKUP_URI_FLAGS)
+        } catch (e: SecurityException) {
+            Toast.makeText(
+                context,
+                "That place can't be kept for automatic backups. Try Google Drive or the phone's own storage.",
+                Toast.LENGTH_LONG
+            ).show()
+            return@rememberLauncherForActivityResult
+        }
+        // Let go of the file this replaces, so its grant does not linger.
+        autoBackup.uri?.takeIf { it != uri.toString() }?.let { old ->
+            runCatching { context.contentResolver.releasePersistableUriPermission(Uri.parse(old), BACKUP_URI_FLAGS) }
+        }
+        AutoBackupPrefs.setTarget(prefs, uri.toString(), displayNameOf(context, uri) ?: "Backup file")
+        val frequency = autoBackup.frequency.takeUnless { it == BackupFrequency.Off } ?: BackupFrequency.Daily
+        AutoBackupPrefs.setFrequency(prefs, frequency)
+        AutoBackupScheduler.apply(context, frequency)
+        // Straight away: the new file is not left empty, and a place that
+        // cannot really be written to shows up now rather than tomorrow.
+        AutoBackupScheduler.runNow(context)
     }
 
     // Light, dark, or following the phone. Saved, so it holds across launches.
@@ -499,6 +523,25 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                         onExportCsv = { car ->
                             exportCarId = car.id
                             exportLauncher.launch("${safeFileName(car)}_History.csv")
+                        },
+                        autoBackup = autoBackup,
+                        onChooseBackupFile = { autoBackupFileLauncher.launch("CarTally_Backup.zip") },
+                        onAutoBackupFrequencyChange = { frequency ->
+                            AutoBackupPrefs.setFrequency(prefs, frequency)
+                            AutoBackupScheduler.apply(context, frequency)
+                        },
+                        onBackUpNow = {
+                            AutoBackupScheduler.runNow(context)
+                            Toast.makeText(context, "Backing up...", Toast.LENGTH_SHORT).show()
+                        },
+                        onStopAutoBackup = {
+                            autoBackup.uri?.let { current ->
+                                runCatching {
+                                    context.contentResolver.releasePersistableUriPermission(Uri.parse(current), BACKUP_URI_FLAGS)
+                                }
+                            }
+                            AutoBackupScheduler.stop(context)
+                            AutoBackupPrefs.clear(prefs)
                         },
                         versionName = versionName,
                         modifier = Modifier.fillMaxSize().padding(paddingValues)

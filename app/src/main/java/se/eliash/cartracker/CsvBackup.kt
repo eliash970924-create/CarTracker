@@ -289,3 +289,52 @@ fun inHistoryOrder(fuelUps: List<FuelUp>): List<FuelUp> =
 /** Expenses newest first, as the expense list shows them. */
 fun expensesInHistoryOrder(expenses: List<Expense>): List<Expense> =
     expenses.sortedByDescending { it.dateMillis }
+
+/**
+ * The day format every backup is written in. Import matches rows already
+ * present by this string, so the manual and automatic backups share it
+ * rather than each keeping a copy that could drift apart.
+ */
+fun formatBackupDay(millis: Long): String =
+    java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date(millis))
+
+/**
+ * What importing one car achieved, for reporting back to the user. Silence
+ * about what a restore actually did is how a backup quietly turns out to be
+ * useless.
+ */
+data class ImportSummary(
+    val carName: String?,
+    val carCreated: Boolean,
+    val fuelAdded: Int,
+    val fuelSkipped: Int,
+    val expensesAdded: Int,
+    val expensesSkipped: Int
+)
+
+/**
+ * The one message an import ends with: the familiar detail for one car, a
+ * total for a garage. [fallbackCarName] names the car a file without a car
+ * section went into; null in [results] means such a file had nowhere to go.
+ */
+fun importMessage(results: List<ImportSummary?>, fallbackCarName: String?, unreadableRows: Int): String {
+    val done = results.filterNotNull()
+    if (done.isEmpty()) return "Select a car first, or import a file that includes car details"
+
+    return buildString {
+        if (done.size == 1) {
+            val result = done.single()
+            val name = result.carName ?: fallbackCarName ?: "car"
+            append(if (result.carCreated) "Created $name: " else "$name: ")
+        } else {
+            append("Restored ${done.size} cars")
+            val created = done.count { it.carCreated }
+            if (created > 0) append(" ($created new)")
+            append(": ")
+        }
+        append("added ${done.sumOf { it.fuelAdded }} fill-ups, ${done.sumOf { it.expensesAdded }} expenses")
+        val skipped = done.sumOf { it.fuelSkipped + it.expensesSkipped }
+        if (skipped > 0) append(" - skipped $skipped already present")
+        if (unreadableRows > 0) append(" - $unreadableRows rows could not be read")
+    }
+}
