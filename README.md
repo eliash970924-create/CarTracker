@@ -32,6 +32,29 @@ Requires JDK 17 or newer (21 recommended) and the Android SDK.
 ./gradlew installDebug   # build and install to a connected device
 ```
 
+## Getting it onto a phone
+
+```bash
+./install.sh              # latest main
+./install.sh some-branch  # that branch, for trying a PR before merging
+./install.sh --here       # whatever is checked out now, no fetch
+```
+
+Updates the checkout, builds, installs and launches. It stops early with
+something useful to do if no phone is connected, rather than after a build,
+and refuses to move the checkout out from under uncommitted work.
+
+The update step is the point. `git checkout main` on a local branch that
+already exists leaves it wherever it was, so you build last week's code and
+wonder why your change is missing; `install.sh` forces the branch to match
+the remote.
+
+**Do not sideload the APK attached to a CI run** to update an existing
+install. It is signed with the runner's throwaway debug key rather than
+yours, so Android refuses to install it over the app you already have, and
+uninstalling first takes the data with it. That APK is for looking at a
+build you have not checked out, on a phone that does not already have one.
+
 CI runs both of the first two on every pull request and on pushes to `main`,
 and attaches the built APK to the run — so a change can be installed from the
 exact reviewed commit rather than from a local checkout that may be behind.
