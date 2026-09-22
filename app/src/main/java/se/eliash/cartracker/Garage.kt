@@ -42,7 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import se.eliash.cartracker.ui.theme.CarTallyAmber
+import se.eliash.cartracker.ui.theme.CarTallyAmberDeep
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -186,7 +186,8 @@ private fun GarageCarCard(
                     Icon(
                         Icons.Filled.Star,
                         contentDescription = "Stop opening ${car.name} at start",
-                        tint = CarTallyAmber
+                        // The deeper amber: the logo's is too faint on a white card.
+                        tint = CarTallyAmberDeep
                     )
                 } else {
                     Icon(

@@ -12,3 +12,14 @@ val Pink40 = Color(0xFF7D5260)
 // CarTally, sampled from the logo artwork.
 val CarTallyPetrol = Color(0xFF12302E)
 val CarTallyAmber = Color(0xFFF2A531)
+val CarTallyIvory = Color(0xFFF6F3EC)
+val CarTallyInk = Color(0xFF161B20)
+
+// Amber for anything that has to read on white. The logo amber is only 2.1:1
+// against white - too faint even for an icon - where this is 3.8:1. Still
+// short of the 4.5:1 small text needs, so text uses petrol instead.
+val CarTallyAmberDeep = Color(0xFFB8740C)
+
+// Secondary text: 6.5:1 on white, 5.8:1 on ivory.
+val CarTallyMuted = Color(0xFF5A5F63)
+val CarTallyHairline = Color(0xFFE4DED2)
