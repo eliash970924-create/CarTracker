@@ -1,6 +1,7 @@
 package se.eliash.cartracker
 
 import androidx.compose.ui.graphics.Color
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import se.eliash.cartracker.ui.theme.CarTallyAmber
@@ -8,7 +9,12 @@ import se.eliash.cartracker.ui.theme.CarTallyAmberDeep
 import se.eliash.cartracker.ui.theme.CarTallyInk
 import se.eliash.cartracker.ui.theme.CarTallyIvory
 import se.eliash.cartracker.ui.theme.CarTallyMuted
+import se.eliash.cartracker.ui.theme.CarTallyMutedOnDark
+import se.eliash.cartracker.ui.theme.CarTallyNight
+import se.eliash.cartracker.ui.theme.CarTallyNightCard
 import se.eliash.cartracker.ui.theme.CarTallyPetrol
+import se.eliash.cartracker.ui.theme.CarTallyPetrolLifted
+import se.eliash.cartracker.ui.theme.contrastRatio
 import kotlin.math.pow
 
 /**
@@ -63,4 +69,40 @@ class PaletteTest {
     @Test
     fun `the starred star is visible on a card`() =
         assertReadable("deep amber on white", CarTallyAmberDeep, Color.White, 3.0)
+
+    // --- dark mode ---
+
+    @Test
+    fun `the dark top bar title reads on lifted petrol`() =
+        assertReadable("ivory on lifted petrol", CarTallyIvory, CarTallyPetrolLifted, 4.5)
+
+    @Test
+    fun `dark body and secondary text read on a card`() {
+        assertReadable("ivory on night card", CarTallyIvory, CarTallyNightCard, 4.5)
+        assertReadable("muted on night card", CarTallyMutedOnDark, CarTallyNightCard, 4.5)
+        assertReadable("muted on night", CarTallyMutedOnDark, CarTallyNight, 4.5)
+    }
+
+    @Test
+    fun `the amber star and default label read on a dark card`() {
+        assertReadable("amber icon on night card", CarTallyAmber, CarTallyNightCard, 3.0)
+        assertReadable("amber text on night card", CarTallyAmber, CarTallyNightCard, 4.5)
+    }
+
+    @Test
+    fun `a dark card still parts from the page`() {
+        val ratio = contrast(CarTallyNightCard, CarTallyNight)
+        assertTrue("card on page is %.2f:1".format(ratio), ratio >= 1.2)
+    }
+
+    @Test
+    fun `the app's contrast agrees with this independent calculation`() {
+        // The app's contrastRatio uses Compose's luminance; this file works
+        // it out from the WCAG formula directly. They should not drift apart.
+        listOf(
+            CarTallyIvory to CarTallyPetrol,
+            CarTallyAmber to CarTallyNightCard,
+            CarTallyMuted to Color.White
+        ).forEach { (a, b) -> assertEquals(contrast(a, b), contrastRatio(a, b), 0.02) }
+    }
 }

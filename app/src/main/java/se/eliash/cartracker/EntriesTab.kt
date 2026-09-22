@@ -315,7 +315,7 @@ fun EntriesTab(
                                 Text(
                                     consumptionText,
                                     color = if (fuelUp.missedPrevious || fuelUp.odometerKm == 0) {
-                                        Color.Gray
+                                        MaterialTheme.colorScheme.onSurfaceVariant
                                     } else {
                                         MaterialTheme.colorScheme.primary
                                     },

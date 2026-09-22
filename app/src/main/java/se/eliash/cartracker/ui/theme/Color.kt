@@ -23,3 +23,11 @@ val CarTallyAmberDeep = Color(0xFFB8740C)
 // Secondary text: 6.5:1 on white, 5.8:1 on ivory.
 val CarTallyMuted = Color(0xFF5A5F63)
 val CarTallyHairline = Color(0xFFE4DED2)
+
+// Dark mode, from the "lifted petrol" mockup: the night page and the tile.
+val CarTallyNight = Color(0xFF0B0F12)
+val CarTallyPetrolLifted = Color(0xFF1B3E3B)
+// Cards, between the two: enough lift to part from the page, 1.26:1.
+val CarTallyNightCard = Color(0xFF142929)
+// Secondary text on dark, from the same mockup: 9:1 on a card.
+val CarTallyMutedOnDark = Color(0xFFB9C4C1)

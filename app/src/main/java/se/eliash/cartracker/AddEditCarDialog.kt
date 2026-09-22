@@ -149,7 +149,7 @@ fun AddEditCarDialog(
                 .background(Color(colour))
                 .border(
                     width = if (selected) 3.dp else 0.dp,
-                    color = if (selected) Color.Black else Color.Transparent,
+                    color = if (selected) MaterialTheme.colorScheme.onSurface else Color.Transparent,
                     shape = CircleShape
                 )
                 .clickable { form.themeColor = colour; showCustomColorSlider = false }
@@ -185,7 +185,10 @@ fun AddEditCarDialog(
             confirmButton = {
                 Button(
                     onClick = { confirmingDelete = false; onDelete() },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
                 ) { Text("Delete") }
             },
             dismissButton = {
@@ -339,7 +342,7 @@ fun AddEditCarDialog(
                         // expense logged against it on the way out.
                         onClick = { confirmingDelete = true },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
                     ) {
                         Text("Delete Car")
                     }

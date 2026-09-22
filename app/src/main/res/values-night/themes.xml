@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The window behind the app, and the launch screen, when the phone is
+         in dark mode: without this they stay white, and flash on every start
+         before the dark app draws over them. -->
+    <style name="Theme.CarTally" parent="android:Theme.Material.NoActionBar" />
+</resources>

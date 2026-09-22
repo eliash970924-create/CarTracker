@@ -1,6 +1,8 @@
 package se.eliash.cartracker
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
@@ -11,6 +13,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import se.eliash.cartracker.ui.theme.ThemeMode
 
 /**
  * The navigation drawer: the garage, the view switcher and backup.
@@ -32,126 +35,174 @@ fun GarageDrawer(
     onSelectTab: (String) -> Unit,
     onImport: () -> Unit,
     onExport: () -> Unit,
-    onExportBackup: () -> Unit
+    onExportBackup: () -> Unit,
+    themeMode: ThemeMode,
+    onThemeModeChange: (ThemeMode) -> Unit
 ) {
     ModalDrawerSheet(modifier = Modifier.width(300.dp)) {
-        Text(
-            "Your Garage",
-            modifier = Modifier.padding(16.dp),
-            style = MaterialTheme.typography.headlineMedium
-        )
-        // The back gesture also leads here; this is the way that can be seen.
-        if (selectedCar != null) {
-            NavigationDrawerItem(
-                label = { Text("All cars") },
-                selected = false,
-                onClick = onOpenGarage,
-                modifier = Modifier.padding(horizontal = 12.dp)
+        // Scrolls: with several cars and the appearance row this outgrows a short
+        // screen, and a plain column just cuts off whatever does not fit.
+        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+            Text(
+                "Your Garage",
+                modifier = Modifier.padding(16.dp),
+                style = MaterialTheme.typography.headlineMedium
             )
-        }
-        HorizontalDivider()
+            // The back gesture also leads here; this is the way that can be seen.
+            if (selectedCar != null) {
+                NavigationDrawerItem(
+                    label = { Text("All cars") },
+                    selected = false,
+                    onClick = onOpenGarage,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+            }
+            HorizontalDivider()
 
-        cars.forEach { car ->
-            val isSelected = car.id == selectedCar?.id
+            cars.forEach { car ->
+                val isSelected = car.id == selectedCar?.id
 
-            Surface(
-                modifier = Modifier
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
-                    .fillMaxWidth()
-                    .clip(CircleShape)
-                    .clickable { onSelectCar(car) },
-                color = if (isSelected) {
-                    MaterialTheme.colorScheme.secondaryContainer
-                } else {
-                    Color.Transparent
-                },
-                contentColor = if (isSelected) {
-                    MaterialTheme.colorScheme.onSecondaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                }
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(end = 16.dp)
+                Surface(
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .fillMaxWidth()
+                        .clip(CircleShape)
+                        .clickable { onSelectCar(car) },
+                    color = if (isSelected) {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    } else {
+                        Color.Transparent
+                    },
+                    contentColor = if (isSelected) {
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
                 ) {
-                    CarAvatar(car = car, size = 56.dp)
-                    Spacer(modifier = Modifier.width(16.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(end = 16.dp)
+                    ) {
+                        CarAvatar(car = car, size = 56.dp)
+                        Spacer(modifier = Modifier.width(16.dp))
 
-                    Column(verticalArrangement = Arrangement.Center) {
-                        Text(
-                            car.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(fuelLabel(car), style = MaterialTheme.typography.bodyMedium)
+                        Column(verticalArrangement = Arrangement.Center) {
+                            Text(
+                                car.name,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(fuelLabel(car), style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = onAddCar,
-            modifier = Modifier.padding(horizontal = 12.dp).fillMaxWidth()
-        ) { Text("Add New Car") }
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = onAddCar,
+                modifier = Modifier.padding(horizontal = 12.dp).fillMaxWidth()
+            ) { Text("Add New Car") }
 
-        if (selectedCar != null) {
+            if (selectedCar != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider()
+                Text(
+                    "Views",
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                listOf(
+                    "Entries" to "Log & History",
+                    "Expenses" to "Service & Expenses",
+                    "Charts" to "Charts & Graphs"
+                ).forEach { (tab, label) ->
+                    NavigationDrawerItem(
+                        label = { Text(label) },
+                        selected = currentTab == tab,
+                        onClick = { onSelectTab(tab) },
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
+            }
+
+            // Was a weight(1f) spacer pinning this section to the bottom; weight
+            // has no meaning inside a scrolling column.
             Spacer(modifier = Modifier.height(16.dp))
             HorizontalDivider()
             Text(
-                "Views",
+                "Appearance",
                 modifier = Modifier.padding(16.dp),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary
             )
-            listOf(
-                "Entries" to "Log & History",
-                "Expenses" to "Service & Expenses",
-                "Charts" to "Charts & Graphs"
-            ).forEach { (tab, label) ->
+            ThemeModePicker(
+                selected = themeMode,
+                onSelect = onThemeModeChange,
+                modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            HorizontalDivider()
+            Text(
+                "Data Management",
+                modifier = Modifier.padding(16.dp),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+            // Offered with no car selected too: a backup carries its own car
+            // details, so restoring onto a fresh install no longer means
+            // recreating the car by hand first.
+            NavigationDrawerItem(
+                label = { Text(if (selectedCar != null) "Import from file" else "Import a car from file") },
+                selected = false,
+                onClick = onImport,
+                modifier = Modifier.padding(horizontal = 12.dp)
+            )
+            if (selectedCar != null && hasDataToExport) {
+                // Two exports on purpose: the CSV opens in a spreadsheet, the zip
+                // carries the photo and is the one to keep if the phone is lost.
                 NavigationDrawerItem(
-                    label = { Text(label) },
-                    selected = currentTab == tab,
-                    onClick = { onSelectTab(tab) },
+                    label = { Text("Export ${selectedCar.name} to CSV") },
+                    selected = false,
+                    onClick = onExport,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+                NavigationDrawerItem(
+                    label = { Text("Full backup of ${selectedCar.name} (.zip)") },
+                    selected = false,
+                    onClick = onExportBackup,
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
             }
+            Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+}
 
-        Spacer(modifier = Modifier.weight(1f))
-        HorizontalDivider()
-        Text(
-            "Data Management",
-            modifier = Modifier.padding(16.dp),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary
-        )
-        // Offered with no car selected too: a backup carries its own car
-        // details, so restoring onto a fresh install no longer means
-        // recreating the car by hand first.
-        NavigationDrawerItem(
-            label = { Text(if (selectedCar != null) "Import from file" else "Import a car from file") },
-            selected = false,
-            onClick = onImport,
-            modifier = Modifier.padding(horizontal = 12.dp)
-        )
-        if (selectedCar != null && hasDataToExport) {
-            // Two exports on purpose: the CSV opens in a spreadsheet, the zip
-            // carries the photo and is the one to keep if the phone is lost.
-            NavigationDrawerItem(
-                label = { Text("Export ${selectedCar.name} to CSV") },
-                selected = false,
-                onClick = onExport,
-                modifier = Modifier.padding(horizontal = 12.dp)
-            )
-            NavigationDrawerItem(
-                label = { Text("Full backup of ${selectedCar.name} (.zip)") },
-                selected = false,
-                onClick = onExportBackup,
-                modifier = Modifier.padding(horizontal = 12.dp)
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ThemeModePicker(
+    selected: ThemeMode,
+    onSelect: (ThemeMode) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val options = listOf(
+        ThemeMode.System to "System",
+        ThemeMode.Light to "Light",
+        ThemeMode.Dark to "Dark"
+    )
+    SingleChoiceSegmentedButtonRow(modifier = modifier) {
+        options.forEachIndexed { index, (mode, label) ->
+            SegmentedButton(
+                selected = selected == mode,
+                onClick = { onSelect(mode) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                // No tick: the fill already shows the choice, and a tick
+                // leaves "System" too little room in a drawer this narrow.
+                icon = {},
+                label = { Text(label, maxLines = 1) }
             )
         }
-        Spacer(modifier = Modifier.height(16.dp))
     }
 }

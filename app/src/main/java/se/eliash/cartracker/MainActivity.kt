@@ -11,6 +11,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -33,12 +34,17 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import se.eliash.cartracker.ui.theme.CarTallyAmber
+import se.eliash.cartracker.ui.theme.ThemeMode
+import se.eliash.cartracker.ui.theme.resolveDarkTheme
 import se.eliash.cartracker.ui.theme.CarTallyPetrol
 import se.eliash.cartracker.ui.theme.carColorScheme
 import se.eliash.cartracker.ui.theme.carTallyColorScheme
 
 /** Preference holding the id of the car to open at start. Absent means the garage. */
 private const val DEFAULT_CAR_KEY = "default_car_id"
+
+/** Preference holding the light / dark / follow-the-phone choice. */
+private const val THEME_KEY = "theme_mode"
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -244,120 +250,135 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
         }
     }
 
-    if (showAddCarDialog || editingCar != null) {
-        AddEditCarDialog(
-            form = carForm,
-            isEditMode = editingCar != null,
-            // Only ever the selected car is edited, so its loaded history is
-            // the history the confirmation is counting.
-            fuelUpCount = if (editingCar != null) fuelHistory.size else 0,
-            expenseCount = if (editingCar != null) expenseHistory.size else 0,
-            onSave = { name, primaryFuel, secondaryFuel, odometer, photo, themeColor ->
-                val editing = editingCar
-                if (editing != null) {
-                    val updated = editing.copy(
-                        name = name,
-                        fuelType = primaryFuel,
-                        secondaryFuelType = secondaryFuel,
-                        initialOdometer = odometer,
-                        imageUri = photo,
-                        themeColor = themeColor
-                    )
-                    viewModel.updateCar(updated)
-                } else {
-                    viewModel.saveCar(name, primaryFuel, secondaryFuel, odometer, photo, themeColor)
-                }
-                showAddCarDialog = false
-                editingCar = null
-            },
-            onDelete = {
-                editingCar?.let { car ->
-                    viewModel.deleteCar(car)
-                    if (selectedCarId == car.id) selectedCarId = null
-                    if (defaultCarId == car.id) setDefaultCar(null)
-                }
-                showAddCarDialog = false
-                editingCar = null
-            },
-            onDismiss = { showAddCarDialog = false; editingCar = null }
-        )
+    // Light, dark, or following the phone. Saved, so it holds across launches.
+    var themeMode by remember { mutableStateOf(ThemeMode.fromStored(prefs.getString(THEME_KEY, null))) }
+    fun changeThemeMode(mode: ThemeMode) {
+        themeMode = mode
+        prefs.edit().putString(THEME_KEY, mode.name).apply()
     }
-
-    editingFuelUp?.let { editing ->
-        EditFuelUpDialog(
-            fuelUp = editing,
-            availableFuels = availableFuels,
-            // The oldest fill-up has no previous one to have missed.
-            canMarkMissed = fuelHistory.lastOrNull()?.id != editing.id,
-            onSave = { updated ->
-                viewModel.updateFuelEntry(updated)
-                editingFuelUp = null
-            },
-            onDelete = {
-                // The entry before this one now covers its distance too, so it
-                // has to be marked as following a gap - otherwise that distance
-                // is credited to a tankful that never covered it.
-                val index = fuelHistory.indexOfFirst { it.id == editing.id }
-                if (index > 0) {
-                    viewModel.updateFuelEntry(fuelHistory[index - 1].copy(missedPrevious = true))
-                }
-                viewModel.deleteFuelEntry(editing)
-                editingFuelUp = null
-            },
-            onDismiss = { editingFuelUp = null }
-        )
-    }
-
-    editingExpense?.let { editing ->
-        EditExpenseDialog(
-            expense = editing,
-            currencyLocale = svLocale,
-            onSave = { updated ->
-                viewModel.updateExpense(original = editing, updated = updated)
-                editingExpense = null
-            },
-            onDelete = {
-                viewModel.deleteExpense(editing)
-                editingExpense = null
-            },
-            onDismiss = { editingExpense = null }
-        )
-    }
+    val darkTheme = resolveDarkTheme(themeMode, isSystemInDarkTheme())
+    val baseColors = if (darkTheme) darkColorScheme() else lightColorScheme()
 
     // A car wears its own colour; one without a colour chosen, CarTally petrol.
     val activePrimaryColor = selectedCar?.themeColor?.let { Color(it) } ?: CarTallyPetrol
 
     // The garage wears CarTally's colours outright. A car keeps its own accent.
     val dynamicThemeColors = if (selectedCar == null) {
-        carTallyColorScheme(MaterialTheme.colorScheme)
+        carTallyColorScheme(baseColors, darkTheme)
     } else {
-        carColorScheme(MaterialTheme.colorScheme, activePrimaryColor)
+        carColorScheme(baseColors, activePrimaryColor, darkTheme)
     }
 
     // The top bar reaches up under the status bar - edge-to-edge is enforced
     // from Android 15 for this target SDK - so the clock and battery have to
-    // suit it: light over the garage's petrol, dark over a car's pale tint.
-    // Earlier versions keep their own status bar colour, so are left alone.
+    // suit it: light over a dark bar, dark over a pale one. The gesture bar
+    // sits over the page, so it follows the page. Earlier versions keep their
+    // own system bar colours, so are left alone.
     val view = LocalView.current
     val lightStatusIcons = dynamicThemeColors.primaryContainer.luminance() < 0.5f
     SideEffect {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
             val window = (view.context as? Activity)?.window ?: return@SideEffect
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !lightStatusIcons
+            val controller = WindowCompat.getInsetsController(window, view)
+            controller.isAppearanceLightStatusBars = !lightStatusIcons
+            controller.isAppearanceLightNavigationBars = !darkTheme
         }
     }
 
-    // Back from a car goes to the garage rather than out of the app. An open
-    // drawer closes first, as it would anyway.
-    BackHandler(enabled = drawerState.isOpen || selectedCar != null) {
-        if (drawerState.isOpen) {
-            scope.launch { drawerState.close() }
-        } else {
-            selectedCarId = null
-        }
-    }
-
+    // Everything below wears these colours, the dialogs included. They used
+    // to sit outside, in Material's default light theme - which is why their
+    // buttons were purple - and at night they would have been glaring white.
     MaterialTheme(colorScheme = dynamicThemeColors) {
+        if (showAddCarDialog || editingCar != null) {
+            AddEditCarDialog(
+                form = carForm,
+                isEditMode = editingCar != null,
+                // Only ever the selected car is edited, so its loaded history is
+                // the history the confirmation is counting.
+                fuelUpCount = if (editingCar != null) fuelHistory.size else 0,
+                expenseCount = if (editingCar != null) expenseHistory.size else 0,
+                onSave = { name, primaryFuel, secondaryFuel, odometer, photo, themeColor ->
+                    val editing = editingCar
+                    if (editing != null) {
+                        val updated = editing.copy(
+                            name = name,
+                            fuelType = primaryFuel,
+                            secondaryFuelType = secondaryFuel,
+                            initialOdometer = odometer,
+                            imageUri = photo,
+                            themeColor = themeColor
+                        )
+                        viewModel.updateCar(updated)
+                    } else {
+                        viewModel.saveCar(name, primaryFuel, secondaryFuel, odometer, photo, themeColor)
+                    }
+                    showAddCarDialog = false
+                    editingCar = null
+                },
+                onDelete = {
+                    editingCar?.let { car ->
+                        viewModel.deleteCar(car)
+                        if (selectedCarId == car.id) selectedCarId = null
+                        if (defaultCarId == car.id) setDefaultCar(null)
+                    }
+                    showAddCarDialog = false
+                    editingCar = null
+                },
+                onDismiss = { showAddCarDialog = false; editingCar = null }
+            )
+        }
+
+        editingFuelUp?.let { editing ->
+            EditFuelUpDialog(
+                fuelUp = editing,
+                availableFuels = availableFuels,
+                // The oldest fill-up has no previous one to have missed.
+                canMarkMissed = fuelHistory.lastOrNull()?.id != editing.id,
+                onSave = { updated ->
+                    viewModel.updateFuelEntry(updated)
+                    editingFuelUp = null
+                },
+                onDelete = {
+                    // The entry before this one now covers its distance too, so it
+                    // has to be marked as following a gap - otherwise that distance
+                    // is credited to a tankful that never covered it.
+                    val index = fuelHistory.indexOfFirst { it.id == editing.id }
+                    if (index > 0) {
+                        viewModel.updateFuelEntry(fuelHistory[index - 1].copy(missedPrevious = true))
+                    }
+                    viewModel.deleteFuelEntry(editing)
+                    editingFuelUp = null
+                },
+                onDismiss = { editingFuelUp = null }
+            )
+        }
+
+        editingExpense?.let { editing ->
+            EditExpenseDialog(
+                expense = editing,
+                currencyLocale = svLocale,
+                onSave = { updated ->
+                    viewModel.updateExpense(original = editing, updated = updated)
+                    editingExpense = null
+                },
+                onDelete = {
+                    viewModel.deleteExpense(editing)
+                    editingExpense = null
+                },
+                onDismiss = { editingExpense = null }
+            )
+        }
+
+        // Back from a car goes to the garage rather than out of the app. An open
+        // drawer closes first, as it would anyway.
+        BackHandler(enabled = drawerState.isOpen || selectedCar != null) {
+            if (drawerState.isOpen) {
+                scope.launch { drawerState.close() }
+            } else {
+                selectedCarId = null
+            }
+        }
+
         ModalNavigationDrawer(
             drawerState = drawerState,
             drawerContent = {
@@ -397,7 +418,9 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                         val safeName = selectedCar!!.name.replace(" ", "_")
                         exportZipLauncher.launch("${safeName}_Backup.zip")
                         scope.launch { drawerState.close() }
-                    }
+                    },
+                    themeMode = themeMode,
+                    onThemeModeChange = { changeThemeMode(it) }
                 )
             }
         ) {
@@ -462,7 +485,8 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                             expenses = expenseHistory,
                             subTab = chartSubTab,
                             onSubTabChange = { chartSubTab = it },
-                            primaryColor = activePrimaryColor,
+                            // Lifted for dark mode, where the raw accent can vanish.
+                            primaryColor = dynamicThemeColors.primary,
                             currencyLocale = svLocale,
                             modifier = Modifier.fillMaxSize().padding(paddingValues)
                         )

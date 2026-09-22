@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -90,7 +91,7 @@ fun ChartsTab(
                     item {
                         Text(
                             "Add at least 2 consecutive ${car.fuelType} entries to generate a chart.",
-                            color = Color.Gray
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -116,7 +117,7 @@ fun ChartsTab(
                     item {
                         Text(
                             "Add at least 2 ${car.fuelType} entries to generate a chart.",
-                            color = Color.Gray
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
