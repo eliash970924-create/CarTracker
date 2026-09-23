@@ -42,7 +42,7 @@ data class ReminderStatus(
 
 /** The newest logged odometer reading, or null before the first. */
 fun latestReading(fuelUps: List<FuelUp>): OdometerReading? =
-    fuelUps.filter { it.odometerKm > 0 }
+    withTrustedReadings(fuelUps).filter { it.odometerKm > 0 }
         .maxWithOrNull(compareBy<FuelUp> { it.dateMillis }.thenBy { it.odometerKm })
         ?.let { OdometerReading(it.odometerKm, it.dateMillis) }
 
@@ -55,7 +55,7 @@ fun latestReading(fuelUps: List<FuelUp>): OdometerReading? =
  * reminder is better quiet than wrong.
  */
 fun kmPerDay(fuelUps: List<FuelUp>, now: Long): Double? {
-    val readings = fuelUps.filter { it.odometerKm > 0 }.sortedBy { it.dateMillis }
+    val readings = withTrustedReadings(fuelUps).filter { it.odometerKm > 0 }.sortedBy { it.dateMillis }
     val recent = readings.filter { it.dateMillis >= now - RECENT_DAYS * DAY_MILLIS }
 
     fun rate(span: List<FuelUp>): Double? {

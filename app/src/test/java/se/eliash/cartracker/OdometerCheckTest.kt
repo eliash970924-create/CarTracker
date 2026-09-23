@@ -137,4 +137,72 @@ class OdometerCheckTest {
         val sameDay = history + fill(9, at(2024, Calendar.MARCH, 3, hour = 8), 43_050)
         assertTrue(outOfOrderEntries(sameDay).isEmpty())
     }
+
+    // --- what the calculations see until it is fixed ---
+
+    private val car = Car(id = 1, name = "Old car", fuelType = "Petrol", initialOdometer = 41_000)
+
+    /** The year above with the mistake in it: 67,000 km dated 2 Feb 2024. */
+    private val withMistake = history + fill(9, at(2024, Calendar.FEBRUARY, 2), 67_000)
+
+    private fun newestFirst(list: List<FuelUp>) = list.sortedByDescending { it.dateMillis }
+
+    @Test
+    fun `the misdated reading gets no consumption, rather than a near-zero one`() {
+        // Measured from 42,000 in January, it would be 40 L over 25,000 km.
+        val trend = consumptionTrend(newestFirst(withMistake), car.initialOdometer)
+        assertNull(trend[9]!!.value)
+        assertFalse(trend[9]!!.isBest)
+    }
+
+    @Test
+    fun `the fill-up after it is measured from the last reading that fits`() {
+        // 3 Mar 2024 now measures from 42,000 in January, not from the 67,000
+        // that was never there - but, following a reading taken out, it gets
+        // no figure rather than one over fuel it does not count.
+        val trend = consumptionTrend(newestFirst(withMistake), car.initialOdometer)
+        assertNull(trend[2]!!.value)
+        // The one after that is measured normally: 40 L over 8,000 km.
+        assertEquals(0.5, trend[3]!!.value!!, 1e-9)
+    }
+
+    @Test
+    fun `the dashboard average leaves the mistake out`() {
+        // Counted, the 25,000 km "tank" gives 160 L over 47,000 km: 0.34.
+        // Left out, with the fill-up measured from it: 120 L over 22,000 km.
+        val stats = calculateFuelStats(car, withMistake)
+        assertEquals(120.0 / 22_000 * 100, stats.avgPrimary, 1e-9)
+    }
+
+    @Test
+    fun `the misdated reading adds no distance to a month`() {
+        val now = Calendar.getInstance().apply { clear(); set(2025, Calendar.JANUARY, 15) }
+        val clean = monthlyOverview(history, emptyList(), now)
+        val mistaken = monthlyOverview(withMistake, emptyList(), now)
+        assertEquals(
+            clean.months.sumOf { it.distanceKm },
+            mistaken.months.sumOf { it.distanceKm },
+            0.5
+        )
+    }
+
+    @Test
+    fun `the misdated fill-up's cost still counts`() {
+        val now = Calendar.getInstance().apply { clear(); set(2025, Calendar.JANUARY, 15) }
+        val mistaken = monthlyOverview(withMistake, emptyList(), now)
+        assertEquals(5 * 720.0, mistaken.months.sumOf { it.fuelCost }, 0.01)
+    }
+
+    @Test
+    fun `a history in order is left exactly as it is`() {
+        assertEquals(history, withTrustedReadings(history))
+    }
+
+    @Test
+    fun `the list keeps its order and every entry`() {
+        val trusted = withTrustedReadings(newestFirst(withMistake))
+        assertEquals(newestFirst(withMistake).map { it.id }, trusted.map { it.id })
+        assertEquals(0, trusted.single { it.id == 9 }.odometerKm)
+        assertTrue(trusted.single { it.id == 2 }.missedPrevious)
+    }
 }

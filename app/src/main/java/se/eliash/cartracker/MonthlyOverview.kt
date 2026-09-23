@@ -100,19 +100,21 @@ fun monthlyOverview(
     expenses: List<Expense>,
     now: Calendar
 ): MonthlyOverview {
+    // Costs count every fill-up; distance only readings that fit their dates.
+    val trusted = withTrustedReadings(fuelUps)
     val fuelByMonth = mutableMapOf<Int, Double>()
     val fuelByMonthAndType = mutableMapOf<Int, MutableMap<String, Double>>()
     val expensesByMonth = mutableMapOf<Int, Double>()
     val distanceByMonth = mutableMapOf<Int, Double>()
 
-    fuelUps.forEach {
+    trusted.forEach {
         val month = monthOrdinalOf(it.dateMillis)
         fuelByMonth.merge(month, it.totalCostSek, Double::plus)
         fuelByMonthAndType.getOrPut(month) { mutableMapOf() }.merge(it.fuelTypeUsed, it.totalCostSek, Double::plus)
     }
     expenses.forEach { expensesByMonth.merge(monthOrdinalOf(it.dateMillis), it.costSek, Double::plus) }
 
-    fuelUps
+    trusted
         .filter { it.odometerKm > 0 }
         .sortedBy { it.dateMillis }
         .zipWithNext()
@@ -128,7 +130,7 @@ fun monthlyOverview(
             }
         }
 
-    val firstRecord = (fuelUps.map { it.dateMillis } + expenses.map { it.dateMillis }).minOrNull()
+    val firstRecord = (trusted.map { it.dateMillis } + expenses.map { it.dateMillis }).minOrNull()
         ?: return MonthlyOverview(emptyList(), 0.0, 0.0)
 
     val firstMonth = monthOrdinalOf(firstRecord)

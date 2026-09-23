@@ -308,6 +308,14 @@ a year early clashes with the whole year after it. The list keeps the longest
 run of readings that rise with their dates and flags only what is left, which
 for a single mistake is that one entry.
 
+Until it is fixed, a flagged reading is left out of every calculation -
+consumption, averages, charts, monthly distance, "best ever" and the reminder
+estimate - as if it had never been entered. Counted, one reading dated a year
+early reads as tens of thousands of kilometres on one tank: a consumption near
+zero. The next fill-up of the same fuel gets no figure either, rather than one
+measured over fuel it does not count. The list still shows what was entered,
+with "Check odometer" where its consumption would be.
+
 **A reminder stores when it is next due, not when it was last done.** "The
 inspection is due on 15 March" can then be entered as it stands, without its
 history. Marking it done moves it on by its repeat, counted from the day and

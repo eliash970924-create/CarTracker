@@ -122,3 +122,39 @@ fun outOfOrderEntries(history: List<FuelUp>): Set<Int> {
     }
     return readings.map { it.id }.filterNot { it in kept }.toSet()
 }
+
+/**
+ * [fuelUps] as the calculations should see them: each reading flagged by
+ * [outOfOrderEntries] taken out, as if never entered, until it is fixed.
+ *
+ * One such reading otherwise does real damage. Dated a year early, 67,000 km
+ * after 42,000 reads as 25,000 km on a tank - a consumption near zero, the
+ * best ever, and a month that never happened in the distance chart.
+ *
+ * The next fill-up of the same fuel is then treated as following a missed
+ * one: its distance would run back past the reading taken out, over fuel it
+ * does not count, and show a figure better than the truth. No figure is
+ * better than a wrong one. Only the calculations see this copy; the history
+ * list still shows what was entered.
+ */
+fun withTrustedReadings(fuelUps: List<FuelUp>): List<FuelUp> {
+    val flagged = outOfOrderEntries(fuelUps)
+    if (flagged.isEmpty()) return fuelUps
+
+    val gapAfter = mutableSetOf<String>()
+    val adjusted = mutableMapOf<Int, FuelUp>()
+    fuelUps.sortedWith(compareBy<FuelUp>({ it.dateMillis }, { it.odometerKm })).forEach { entry ->
+        when {
+            entry.id in flagged -> {
+                adjusted[entry.id] = entry.copy(odometerKm = 0)
+                gapAfter += entry.fuelTypeUsed
+            }
+            entry.odometerKm > 0 && entry.fuelTypeUsed in gapAfter -> {
+                adjusted[entry.id] = entry.copy(missedPrevious = true)
+                gapAfter -= entry.fuelTypeUsed
+            }
+        }
+    }
+    // The order given is kept: callers rely on it (the history is newest first).
+    return fuelUps.map { adjusted[it.id] ?: it }
+}

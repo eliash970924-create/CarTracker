@@ -382,6 +382,7 @@ fun EntriesTab(
                             Column(horizontalAlignment = Alignment.End) {
                                 val unit = unitFor(fuelUp.fuelTypeUsed)
                                 val consumptionText = when {
+                                    fuelUp.id in outOfOrder -> "Check odometer"
                                     fuelUp.missedPrevious -> "Missed Previous"
                                     fuelUp.odometerKm == 0 -> "No Odo Data"
                                     consumption != null -> "%.2f $unit/100km".format(currencyLocale, consumption)
@@ -389,7 +390,9 @@ fun EntriesTab(
                                 }
                                 Text(
                                     consumptionText,
-                                    color = if (fuelUp.missedPrevious || fuelUp.odometerKm == 0) {
+                                    color = if (fuelUp.id in outOfOrder) {
+                                        MaterialTheme.colorScheme.error
+                                    } else if (fuelUp.missedPrevious || fuelUp.odometerKm == 0) {
                                         MaterialTheme.colorScheme.onSurfaceVariant
                                     } else {
                                         MaterialTheme.colorScheme.primary
