@@ -29,6 +29,10 @@ something real - see below.
 - **Automatic backup** of the whole garage to one file - on Google Drive or the
   phone - kept up to date daily or weekly
 - **Dark mode**, following the phone or set by hand
+- **Reminders** for inspection, service, tyre changes, insurance or anything
+  else - by date, by distance or both, whichever comes first, with a
+  notification ahead of time and a distance estimate from how far the car
+  usually goes
 - **A "Log fill-up" shortcut** on a long press of the app icon, straight to the
   form with the keyboard up
 - **Settings** for the theme, the car to open at start, automatic backup, and
@@ -95,6 +99,9 @@ Single-Activity Jetpack Compose UI over a Room database.
 | `EditExpenseDialog.kt` | editing or deleting one expense, and stopping a repeat |
 | `Garage.kt` | the garage screen, and which car opens at start |
 | `GarageDrawer.kt` | the drawer: cars, views and the way to Settings |
+| `RemindersTab.kt`, `ReminderDialogs.kt` | the reminders list, the due-soon strip, and adding or completing one |
+| `Reminders.kt` | when a reminder is due, the km-per-day estimate, and what marking it done does |
+| `ReminderNotifications.kt` | the daily check and its notifications |
 | `Settings.kt` | theme, which car opens at start, automatic backup, import, per-car export |
 | `FuelViewModel.kt` | database access, import and the recurring-expense fill-in |
 | `Stats.kt` | consumption and cost arithmetic, and the chart series |
@@ -112,7 +119,7 @@ functions, so the things most able to be quietly wrong can be tested. See
 `StatsTest`, `RecurringExpensesTest`, `BackupParseTest`,
 `MonthlyOverviewTest`, `GarageTest`, `PaletteTest`, `ThemeTest`,
 `ImageSamplingTest`, `ExportOrderTest`, `GarageBackupTest`,
-`AutoBackupStatusTest` and `ImportMessageTest` under `app/src/test/`; `./gradlew test` runs them.
+`AutoBackupStatusTest`, `ImportMessageTest` and `ReminderTest` under `app/src/test/`; `./gradlew test` runs them.
 
 A form's contents belong to `MainActivity` rather than to the tab or dialog
 showing them, as a state holder passed down. A composable is disposed when
@@ -284,6 +291,25 @@ fuel drove it, so a per-fuel distance - and with it a "saved by charging"
 figure - would be a guess presented as a measurement. The colours are fixed
 by position (first fuel blue, second orange, the rest aqua) and were checked
 with a colour-blindness validator against both card colours.
+
+**A reminder stores when it is next due, not when it was last done.** "The
+inspection is due on 15 March" can then be entered as it stands, without its
+history. Marking it done moves it on by its repeat, counted from the day and
+reading it was actually done, and a reminder that does not repeat is removed.
+
+**Distance reminders estimate ahead, but never declare anything overdue on
+a guess.** The odometer is only known at a fill-up, so a warning that waited
+for the next one could come after the service it was about. How far the car
+usually goes each day - from the last half-year of fill-ups, when that covers
+at least two weeks - says roughly where the odometer is now, and "due soon"
+listens to that. "Overdue" only follows a date that has passed or a logged
+reading past the mark.
+
+**Each stage is notified once.** Due soon, then overdue: the reminder records
+the furthest it has announced, and moving its due point clears that. The
+check runs daily around nine in the morning, and straight away when a
+reminder or a fill-up is saved. Permission to notify is asked for with the
+first reminder, not at start, so the question comes with its reason.
 
 **Every screen shares CarTally's neutrals.** A car brings its own accent -
 the bar, the buttons, the chart line - but the page, cards, borders and

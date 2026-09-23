@@ -16,6 +16,7 @@ class FuelViewModel(application: Application) : AndroidViewModel(application) {
     private val fuelDao = db.fuelUpDao()
     private val carDao = db.carDao()
     private val expenseDao = db.expenseDao()
+    private val reminderDao = db.reminderDao()
 
     val allCars: Flow<List<Car>> = carDao.getAllCars()
     val carSummaries: Flow<List<CarSummary>> = fuelDao.getCarSummaries()
@@ -31,6 +32,35 @@ class FuelViewModel(application: Application) : AndroidViewModel(application) {
         inHistoryOrder(fuelDao.getFuelUpsListForCar(carId)) to
             expensesInHistoryOrder(expenseDao.getExpensesListForCar(carId))
     fun getExpensesForCar(carId: Int): Flow<List<Expense>> = expenseDao.getExpensesForCar(carId)
+
+    fun getRemindersForCar(carId: Int): Flow<List<Reminder>> = reminderDao.getRemindersForCar(carId)
+
+    /**
+     * Adds [reminder], or saves changes to it, then checks at once whether it
+     * is already due. The dialog clears [Reminder.notifiedStage] when the due
+     * point changes, so a moved reminder is announced afresh.
+     */
+    fun saveReminder(reminder: Reminder) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (reminder.id == 0) reminderDao.insertReminder(reminder) else reminderDao.updateReminder(reminder)
+            ReminderScheduler.checkNow(getApplication<Application>())
+        }
+    }
+
+    fun deleteReminder(reminder: Reminder) {
+        viewModelScope.launch(Dispatchers.IO) { reminderDao.deleteReminder(reminder) }
+    }
+
+    /**
+     * Done at [doneMillis], at [doneOdometerKm] if known: moved on to its next
+     * due point, or removed if it does not repeat. See [markDone].
+     */
+    fun completeReminder(reminder: Reminder, doneMillis: Long, doneOdometerKm: Int?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val next = markDone(reminder, doneMillis, doneOdometerKm)
+            if (next == null) reminderDao.deleteReminder(reminder) else reminderDao.updateReminder(next)
+        }
+    }
 
     fun saveCar(name: String, fuelType: String, secondaryFuelType: String?, initialOdometer: Int, imageUri: String?, themeColor: Long?) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -79,7 +109,11 @@ class FuelViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun saveFuelEntry(carId: Int, fuelTypeUsed: String, dateMillis: Long, odometer: Int, liters: Double, price: Double, total: Double, missedPrevious: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) { fuelDao.insertFuelUp(FuelUp(carId = carId, fuelTypeUsed = fuelTypeUsed, dateMillis = dateMillis, odometerKm = odometer, litersFilled = liters, pricePerLiterSek = price, totalCostSek = total, missedPrevious = missedPrevious)) }
+        viewModelScope.launch(Dispatchers.IO) {
+            fuelDao.insertFuelUp(FuelUp(carId = carId, fuelTypeUsed = fuelTypeUsed, dateMillis = dateMillis, odometerKm = odometer, litersFilled = liters, pricePerLiterSek = price, totalCostSek = total, missedPrevious = missedPrevious))
+            // A new reading can bring a distance reminder due.
+            ReminderScheduler.checkNow(getApplication<Application>())
+        }
     }
 
     fun saveExpense(carId: Int, dateMillis: Long, category: String, description: String, cost: Double, isMonthly: Boolean) {

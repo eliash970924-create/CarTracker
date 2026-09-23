@@ -113,7 +113,8 @@ fun GarageDrawer(
                 listOf(
                     "Entries" to "Log & History",
                     "Expenses" to "Service & Expenses",
-                    "Charts" to "Charts & Graphs"
+                    "Charts" to "Charts & Graphs",
+                    "Reminders" to "Reminders"
                 ).forEach { (tab, label) ->
                     NavigationDrawerItem(
                         label = { Text(label) },

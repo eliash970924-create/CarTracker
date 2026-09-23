@@ -117,6 +117,41 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
     }
 }
 
+/**
+ * Adds the reminders table. Nothing existing changes.
+ *
+ * Written as Room itself would create it: Room compares the table against
+ * [Reminder] when the database opens and refuses to start on any
+ * difference, so the column types, nullability, foreign key and index name
+ * here have to match the entity exactly. The entity's Kotlin defaults
+ * (warnDays, warnKm, notifiedStage) are not SQL defaults, so none appear.
+ */
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `reminders` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `carId` INTEGER NOT NULL,
+                `type` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `dueDateMillis` INTEGER,
+                `dueOdometerKm` INTEGER,
+                `repeatMonths` INTEGER,
+                `repeatKm` INTEGER,
+                `warnDays` INTEGER NOT NULL,
+                `warnKm` INTEGER NOT NULL,
+                `notifiedStage` INTEGER NOT NULL,
+                FOREIGN KEY(`carId`) REFERENCES `cars`(`id`)
+                    ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_reminders_carId` ON `reminders` (`carId`)")
+    }
+}
+
 val ALL_MIGRATIONS: Array<Migration> = arrayOf<Migration>(
-    MIGRATION_8_9
+    MIGRATION_8_9,
+    MIGRATION_9_10
 )
