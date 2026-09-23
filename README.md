@@ -319,7 +319,7 @@ different app from the garage.
 
 ## The backup format
 
-Fill-ups first, then optional expense and car sections:
+Fill-ups first, then optional expense, car and reminder sections:
 
 ```
 Date,Odometer (km),Fuel Type,Amount,Price per Unit (SEK),Total Cost (SEK),Missed Previous
@@ -332,7 +332,18 @@ Date,Category,Description,Cost (SEK),Monthly
 [Car]
 Name,Primary Fuel,Secondary Fuel,Initial Odometer,Theme Colour,Photo
 Volvo V60,Petrol,Electric,12000,4280391411,car_a1b2.img
+
+[Reminders]
+Type,Name,Due Date,Due Odometer (km),Repeat Months,Repeat Km,Warn Days,Warn Km
+Service,Service,2027-03-15,25000,12,15000,7,500
+Insurance,Insurance renewal,2026-12-01,,,,7,500
 ```
+
+Each section is added after the ones before it, never in between, so every
+earlier layout is the start of this one and still imports. A reminder is
+restored with nothing marked as announced, so one that is already due is
+notified again; one already present - same kind, name and due point - is
+left as it is.
 
 Fields are quoted per RFC 4180, so a comma in a description is safe. Numbers
 use a dot regardless of device locale, so a file exported on a Swedish phone

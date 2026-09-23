@@ -35,6 +35,9 @@ class FuelViewModel(application: Application) : AndroidViewModel(application) {
 
     fun getRemindersForCar(carId: Int): Flow<List<Reminder>> = reminderDao.getRemindersForCar(carId)
 
+    /** A car's reminders for export. Blocking, like [historyForExport]. */
+    fun remindersForExport(carId: Int): List<Reminder> = reminderDao.getRemindersListForCar(carId)
+
     /**
      * Adds [reminder], or saves changes to it, then checks at once whether it
      * is already due. The dialog clears [Reminder.notifiedStage] when the due
@@ -128,7 +131,12 @@ class FuelViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** One car's share of an import: a parsed CSV, with its stored photo already set. */
-    class CarImport(val car: ImportedCar?, val fuelUps: List<FuelUp>, val expenses: List<Expense>)
+    class CarImport(
+        val car: ImportedCar?,
+        val fuelUps: List<FuelUp>,
+        val expenses: List<Expense>,
+        val reminders: List<Reminder> = emptyList()
+    )
 
     /**
      * Restores a backup - one car or a whole garage - and reports once, with
@@ -146,7 +154,12 @@ class FuelViewModel(application: Application) : AndroidViewModel(application) {
         onFinished: (List<ImportSummary?>) -> Unit
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            val results = cars.map { importOne(fallbackCarId, it.car, it.fuelUps, it.expenses, dayOf) }
+            val results = cars.map { importOne(fallbackCarId, it.car, it.fuelUps, it.expenses, it.reminders, dayOf) }
+            // A restored reminder may already be due; it is announced now
+            // rather than at tomorrow's check.
+            if (results.any { (it?.remindersAdded ?: 0) > 0 }) {
+                ReminderScheduler.checkNow(getApplication<Application>())
+            }
             withContext(Dispatchers.Main) { onFinished(results) }
         }
     }
@@ -174,6 +187,7 @@ class FuelViewModel(application: Application) : AndroidViewModel(application) {
         car: ImportedCar?,
         fuelUps: List<FuelUp>,
         expenses: List<Expense>,
+        reminders: List<Reminder>,
         dayOf: (Long) -> String
     ): ImportSummary? {
         val existingCar = car?.let { carDao.getCarByName(it.name) }
@@ -246,13 +260,28 @@ class FuelViewModel(application: Application) : AndroidViewModel(application) {
 
         if (expensesAdded > 0 && expenses.any { it.isMonthly }) fillRecurringExpenses(carId)
 
+        // Merged like the rest: one already here, due at the same point, is
+        // left as it is - including what it has already announced.
+        val knownReminders = reminderDao.getRemindersListForCar(carId)
+            .map { reminderKey(it.type, it.title, it.dueDateMillis?.let(dayOf), it.dueOdometerKm) }
+            .toMutableSet()
+        var remindersAdded = 0
+        reminders.forEach { row ->
+            val key = reminderKey(row.type, row.title, row.dueDateMillis?.let(dayOf), row.dueOdometerKm)
+            if (knownReminders.add(key)) {
+                reminderDao.insertReminder(row.copy(id = 0, carId = carId, notifiedStage = 0))
+                remindersAdded++
+            }
+        }
+
         return ImportSummary(
             carName = car?.name,
             carCreated = created,
             fuelAdded = fuelAdded,
             fuelSkipped = fuelSkipped,
             expensesAdded = expensesAdded,
-            expensesSkipped = expensesSkipped
+            expensesSkipped = expensesSkipped,
+            remindersAdded = remindersAdded
         )
     }
 

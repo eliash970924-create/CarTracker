@@ -274,7 +274,8 @@ fun writeGarageBackup(context: Context, uri: Uri): Boolean {
             car = car,
             fuelUps = inHistoryOrder(db.fuelUpDao().getFuelUpsListForCar(car.id)),
             expenses = expensesInHistoryOrder(db.expenseDao().getExpensesListForCar(car.id)),
-            photoName = car.imageUri?.takeUnless { isExternalPhotoReference(it) }
+            photoName = car.imageUri?.takeUnless { isExternalPhotoReference(it) },
+            reminders = db.reminderDao().getRemindersListForCar(car.id)
         )
     }
 

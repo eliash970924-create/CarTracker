@@ -21,6 +21,10 @@ interface ReminderDao {
     @Query("SELECT * FROM reminders WHERE carId = :carId ORDER BY id ASC")
     fun getRemindersForCar(carId: Int): Flow<List<Reminder>>
 
+    /** For backups, which read a car's history off the main thread. */
+    @Query("SELECT * FROM reminders WHERE carId = :carId ORDER BY id ASC")
+    fun getRemindersListForCar(carId: Int): List<Reminder>
+
     /** For the daily check, which runs with the app closed. */
     @Query("SELECT * FROM reminders")
     fun getAllRemindersList(): List<Reminder>

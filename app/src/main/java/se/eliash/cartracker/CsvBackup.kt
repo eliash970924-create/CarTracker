@@ -14,6 +14,19 @@ import java.io.Writer
  *     Date,Category,Description,Cost (SEK),Monthly
  *     2026-01-20,Tires,"Winter set, mounted",8000.0,false
  *
+ * then the car, then its reminders:
+ *
+ *     [Car]
+ *     Name,Primary Fuel,Secondary Fuel,Initial Odometer,Theme Colour,Photo
+ *     Volvo V60,Petrol,Electric,12000,4280391411,
+ *
+ *     [Reminders]
+ *     Type,Name,Due Date,Due Odometer (km),Repeat Months,Repeat Km,Warn Days,Warn Km
+ *     Service,Service,2027-03-15,15000,12,15000,7,500
+ *
+ * Each section is appended after the ones before it, never inserted, so every
+ * earlier layout is a prefix of this one and still imports.
+ *
  * The fuel section is byte-identical to what earlier versions wrote, so files
  * exported before expenses existed still import, and a file exported now is
  * still readable by anything that only understands the fuel block.
@@ -24,9 +37,10 @@ import java.io.Writer
  */
 const val EXPENSE_SECTION_MARKER = "[Expenses]"
 const val CAR_SECTION_MARKER = "[Car]"
+const val REMINDER_SECTION_MARKER = "[Reminders]"
 
 /** Which block of the file the importer is currently reading. */
-enum class Section { FUEL, EXPENSES, CAR }
+enum class Section { FUEL, EXPENSES, CAR, REMINDERS }
 
 const val FUEL_HEADER =
     "Date,Odometer (km),Fuel Type,Amount,Price per Unit (SEK),Total Cost (SEK),Missed Previous"
@@ -34,6 +48,8 @@ const val FUEL_HEADER =
 const val EXPENSE_HEADER = "Date,Category,Description,Cost (SEK),Monthly"
 
 const val CAR_HEADER = "Name,Primary Fuel,Secondary Fuel,Initial Odometer,Theme Colour,Photo"
+
+const val REMINDER_HEADER = "Type,Name,Due Date,Due Odometer (km),Repeat Months,Repeat Km,Warn Days,Warn Km"
 
 /**
  * The car a backup describes, so a file can be restored onto a fresh install
@@ -66,6 +82,13 @@ fun fuelKey(dateStr: String, odometerKm: Int, liters: Double, fuelType: String):
 
 fun expenseKey(dateStr: String, category: String, description: String, cost: Double): String =
     "$dateStr|$category|$description|$cost"
+
+/**
+ * A reminder is the same one if it is the same kind, of the same name, due at
+ * the same point. The due date is compared by day, as the other keys are.
+ */
+fun reminderKey(type: String, title: String, dueDay: String?, dueOdometerKm: Int?): String =
+    "$type|$title|${dueDay ?: ""}|${dueOdometerKm ?: ""}"
 
 /**
  * Quotes a field if it contains a comma, quote or newline, doubling any quote
@@ -113,7 +136,8 @@ fun parseCsvLine(line: String): List<String> {
 
 
 /**
- * Writes the backup for one car: fill-ups, then expenses, then the car.
+ * Writes the backup for one car: fill-ups, then expenses, then the car, then
+ * its reminders.
  *
  * Shared by the plain CSV export and the zip backup so the two cannot drift.
  * [photoName] is written into the car row only when a photo travels with the
@@ -125,7 +149,8 @@ fun writeBackupCsv(
     fuelUps: List<FuelUp>,
     expenses: List<Expense>,
     photoName: String? = null,
-    formatDate: (Long) -> String
+    formatDate: (Long) -> String,
+    reminders: List<Reminder> = emptyList()
 ) {
     writer.write(FUEL_HEADER + "\n")
     fuelUps.forEach { fuelUp ->
@@ -157,6 +182,20 @@ fun writeBackupCsv(
                 "${it.initialOdometer},${it.themeColor ?: ""},${csvEscape(photoName ?: "")}\n"
         )
     }
+
+    // After the car, for the same reason. What has already been announced is
+    // left out: a restored reminder that is due should be announced again.
+    if (reminders.isNotEmpty()) {
+        writer.write("\n" + REMINDER_SECTION_MARKER + "\n")
+        writer.write(REMINDER_HEADER + "\n")
+        reminders.forEach { r ->
+            writer.write(
+                "${csvEscape(r.type)},${csvEscape(r.title)},${r.dueDateMillis?.let(formatDate) ?: ""}," +
+                    "${r.dueOdometerKm ?: ""},${r.repeatMonths ?: ""},${r.repeatKm ?: ""}," +
+                    "${r.warnDays},${r.warnKm}\n"
+            )
+        }
+    }
 }
 
 /** What a backup file's text yielded. */
@@ -165,7 +204,9 @@ data class ParsedBackup(
     val fuelUps: List<FuelUp>,
     val expenses: List<Expense>,
     /** Rows that could not be read and were left out. */
-    val unreadableRows: Int
+    val unreadableRows: Int,
+    /** With no car id, like the other rows. */
+    val reminders: List<Reminder> = emptyList()
 )
 
 /**
@@ -184,6 +225,7 @@ data class ParsedBackup(
 fun parseBackupCsv(csv: String, parseDate: (String) -> Long?): ParsedBackup {
     val fuelUps = mutableListOf<FuelUp>()
     val expenses = mutableListOf<Expense>()
+    val reminders = mutableListOf<Reminder>()
     var car: ImportedCar? = null
     var unreadable = 0
 
@@ -203,6 +245,11 @@ fun parseBackupCsv(csv: String, parseDate: (String) -> Long?): ParsedBackup {
             }
             line == CAR_SECTION_MARKER -> {
                 section = Section.CAR
+                skipHeader = true
+                return@forEachIndexed
+            }
+            line == REMINDER_SECTION_MARKER -> {
+                section = Section.REMINDERS
                 skipHeader = true
                 return@forEachIndexed
             }
@@ -229,6 +276,13 @@ fun parseBackupCsv(csv: String, parseDate: (String) -> Long?): ParsedBackup {
             } else {
                 unreadable++
             }
+            return@forEachIndexed
+        }
+
+        // Its date is optional and in the third field, so it is read here too.
+        if (section == Section.REMINDERS) {
+            val reminder = parseReminderRow(tokens, parseDate)
+            if (reminder != null) reminders.add(reminder) else unreadable++
             return@forEachIndexed
         }
 
@@ -275,7 +329,50 @@ fun parseBackupCsv(csv: String, parseDate: (String) -> Long?): ParsedBackup {
         }
     }
 
-    return ParsedBackup(car, fuelUps, expenses, unreadable)
+    return ParsedBackup(car, fuelUps, expenses, unreadable, reminders)
+}
+
+/**
+ * One reminder row, or null if it cannot be one: too few fields, a date that
+ * does not read, a number that is not one, or neither a date nor a distance.
+ * An unknown type is kept as Other rather than lost, and blank warnings take
+ * the defaults.
+ */
+private fun parseReminderRow(tokens: List<String>, parseDate: (String) -> Long?): Reminder? {
+    if (tokens.size < 8) return null
+
+    // Blank is none; anything else has to be a number above zero, or the row
+    // is refused rather than read with a field quietly missing.
+    var malformed = false
+    fun optionalInt(text: String): Int? {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return null
+        val value = trimmed.toIntOrNull()
+        if (value == null || value <= 0) malformed = true
+        return value
+    }
+
+    val type = ReminderType.fromStored(tokens[0].trim())
+    val dateText = tokens[2].trim()
+    val dueDate = if (dateText.isEmpty()) null else (parseDate(dateText) ?: return null)
+    val dueKm = optionalInt(tokens[3])
+    val repeatMonths = optionalInt(tokens[4])
+    val repeatKm = optionalInt(tokens[5])
+    val warnDays = optionalInt(tokens[6])
+    val warnKm = optionalInt(tokens[7])
+    if (malformed || !isValidReminder(dueDate, dueKm)) return null
+
+    return Reminder(
+        carId = 0,
+        type = type.name,
+        title = tokens[1].trim().ifEmpty { type.label },
+        dueDateMillis = dueDate,
+        dueOdometerKm = dueKm,
+        repeatMonths = repeatMonths,
+        repeatKm = repeatKm,
+        warnDays = warnDays ?: DEFAULT_WARN_DAYS,
+        warnKm = warnKm ?: DEFAULT_WARN_KM
+    )
 }
 
 /**
@@ -309,7 +406,8 @@ data class ImportSummary(
     val fuelAdded: Int,
     val fuelSkipped: Int,
     val expensesAdded: Int,
-    val expensesSkipped: Int
+    val expensesSkipped: Int,
+    val remindersAdded: Int = 0
 )
 
 /**
@@ -333,6 +431,9 @@ fun importMessage(results: List<ImportSummary?>, fallbackCarName: String?, unrea
             append(": ")
         }
         append("added ${done.sumOf { it.fuelAdded }} fill-ups, ${done.sumOf { it.expensesAdded }} expenses")
+        // Only mentioned when there are some, so files without any read as before.
+        val reminders = done.sumOf { it.remindersAdded }
+        if (reminders > 0) append(if (reminders == 1) ", 1 reminder" else ", $reminders reminders")
         val skipped = done.sumOf { it.fuelSkipped + it.expensesSkipped }
         if (skipped > 0) append(" - skipped $skipped already present")
         if (unreadableRows > 0) append(" - $unreadableRows rows could not be read")
