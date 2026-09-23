@@ -19,6 +19,11 @@ something real - see below.
   its own odometer trail, so petrol and electric figures stay honest
 - **Fill-ups** by odometer reading or trip distance, with a "missed previous
   fill-up" flag so a gap does not silently distort consumption
+- **The last price remembered** for each fuel, filled in on the next fill-up -
+  a fixed home charging rate or a pump price that rarely moves need not be
+  typed again
+- **Year in review**: each year's cost, distance, cost per mil, consumption,
+  best tank, priciest and most-driven month, and the change from the year before
 - **Trend on every fill-up**: a green or red arrow for better or worse
   consumption than the one before, and the all-time best of each fuel marked -
   worked out from the history, so it covers everything already logged
@@ -108,6 +113,7 @@ Single-Activity Jetpack Compose UI over a Room database.
 | `Settings.kt` | theme, which car opens at start, automatic backup, import, per-car export |
 | `FuelViewModel.kt` | database access, import and the recurring-expense fill-in |
 | `Stats.kt` | consumption and cost arithmetic, and the chart series |
+| `YearInReview.kt`, `YearSection.kt` | each year's summary and highlights |
 | `MonthlyOverview.kt` | cost and distance per month, and the bar scaling |
 | `RecurringExpenses.kt` | which months of a monthly expense are missing |
 | `CsvBackup.kt` | the backup file format: writing, escaping and parsing |

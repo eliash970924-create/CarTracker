@@ -77,29 +77,24 @@ private fun spreadAcrossMonths(
     dayMonths.forEach { into.merge(it, perDay, Double::plus) }
 }
 
+/** Month ordinal - year * 12 + 0-based month - of a timestamp, in local time. */
+fun monthOrdinal(millis: Long): Int = monthOrdinalOf(millis)
+
+/** Cost and distance per month, keyed by [monthOrdinal], every month with any. */
+class MonthTotals(
+    val fuel: Map<Int, Double>,
+    val fuelByType: Map<Int, Map<String, Double>>,
+    val expenses: Map<Int, Double>,
+    val distance: Map<Int, Double>
+)
+
 /**
- * What the car has cost and covered, month by month.
- *
- * Every month between the first record and the last complete one is present,
- * quiet ones included: insurance is still owed in a month nothing was driven,
- * so leaving those out would overstate the average.
- *
- * The current month is excluded. It is only part-way through, and counting it
- * would drag the average down by however many days are left in it.
- *
- * Distance uses the car's odometer however it was fuelled, unlike the
- * consumption figures, which follow each fuel's own trail. A missed fill-up
- * is not skipped either: the fuel is unknown, but the distance was still
- * driven, and this is a question about distance.
- *
- * The very first fill-up contributes no distance. The car's initial odometer
- * has no date, so there is no span to spread its distance over.
+ * The sums the monthly and yearly views are both built from, so the two can
+ * never disagree: costs by the month they were paid, distance spread over the
+ * days between readings. Readings that do not fit their dates are left out of
+ * the distance; see withTrustedReadings.
  */
-fun monthlyOverview(
-    fuelUps: List<FuelUp>,
-    expenses: List<Expense>,
-    now: Calendar
-): MonthlyOverview {
+fun monthTotals(fuelUps: List<FuelUp>, expenses: List<Expense>): MonthTotals {
     // Costs count every fill-up; distance only readings that fit their dates.
     val trusted = withTrustedReadings(fuelUps)
     val fuelByMonth = mutableMapOf<Int, Double>()
@@ -129,8 +124,39 @@ fun monthlyOverview(
                 )
             }
         }
+    return MonthTotals(fuelByMonth, fuelByMonthAndType, expensesByMonth, distanceByMonth)
+}
 
-    val firstRecord = (trusted.map { it.dateMillis } + expenses.map { it.dateMillis }).minOrNull()
+/**
+ * What the car has cost and covered, month by month.
+ *
+ * Every month between the first record and the last complete one is present,
+ * quiet ones included: insurance is still owed in a month nothing was driven,
+ * so leaving those out would overstate the average.
+ *
+ * The current month is excluded. It is only part-way through, and counting it
+ * would drag the average down by however many days are left in it.
+ *
+ * Distance uses the car's odometer however it was fuelled, unlike the
+ * consumption figures, which follow each fuel's own trail. A missed fill-up
+ * is not skipped either: the fuel is unknown, but the distance was still
+ * driven, and this is a question about distance.
+ *
+ * The very first fill-up contributes no distance. The car's initial odometer
+ * has no date, so there is no span to spread its distance over.
+ */
+fun monthlyOverview(
+    fuelUps: List<FuelUp>,
+    expenses: List<Expense>,
+    now: Calendar
+): MonthlyOverview {
+    val totals = monthTotals(fuelUps, expenses)
+    val fuelByMonth = totals.fuel
+    val fuelByMonthAndType = totals.fuelByType
+    val expensesByMonth = totals.expenses
+    val distanceByMonth = totals.distance
+
+    val firstRecord = (fuelUps.map { it.dateMillis } + expenses.map { it.dateMillis }).minOrNull()
         ?: return MonthlyOverview(emptyList(), 0.0, 0.0)
 
     val firstMonth = monthOrdinalOf(firstRecord)
