@@ -11,7 +11,9 @@ data class MonthSummary(
     val month: Int,
     val fuelCost: Double,
     val expenseCost: Double,
-    val distanceKm: Double
+    val distanceKm: Double,
+    /** [fuelCost] by fuel, keyed as the fill-ups name it: "Petrol", "Electric". */
+    val fuelCostByType: Map<String, Double> = emptyMap()
 ) {
     val totalCost: Double get() = fuelCost + expenseCost
 
@@ -99,10 +101,15 @@ fun monthlyOverview(
     now: Calendar
 ): MonthlyOverview {
     val fuelByMonth = mutableMapOf<Int, Double>()
+    val fuelByMonthAndType = mutableMapOf<Int, MutableMap<String, Double>>()
     val expensesByMonth = mutableMapOf<Int, Double>()
     val distanceByMonth = mutableMapOf<Int, Double>()
 
-    fuelUps.forEach { fuelByMonth.merge(monthOrdinalOf(it.dateMillis), it.totalCostSek, Double::plus) }
+    fuelUps.forEach {
+        val month = monthOrdinalOf(it.dateMillis)
+        fuelByMonth.merge(month, it.totalCostSek, Double::plus)
+        fuelByMonthAndType.getOrPut(month) { mutableMapOf() }.merge(it.fuelTypeUsed, it.totalCostSek, Double::plus)
+    }
     expenses.forEach { expensesByMonth.merge(monthOrdinalOf(it.dateMillis), it.costSek, Double::plus) }
 
     fuelUps
@@ -134,7 +141,8 @@ fun monthlyOverview(
             month = ordinal % 12,
             fuelCost = fuelByMonth[ordinal] ?: 0.0,
             expenseCost = expensesByMonth[ordinal] ?: 0.0,
-            distanceKm = distanceByMonth[ordinal] ?: 0.0
+            distanceKm = distanceByMonth[ordinal] ?: 0.0,
+            fuelCostByType = fuelByMonthAndType[ordinal] ?: emptyMap()
         )
     }
 
@@ -143,6 +151,43 @@ fun monthlyOverview(
         averageMonthlyCost = months.sumOf { it.totalCost } / months.size,
         averageMonthlyDistance = months.sumOf { it.distanceKm } / months.size
     )
+}
+
+/** One part of a month's cost: a fuel, or everything else. */
+data class CostPart(val label: String, val amount: Double)
+
+/** What the part that is not a fuel is called. */
+const val OTHER_COSTS = "Other costs"
+
+/**
+ * A month's cost in parts: each of the car's fuels, in the car's order, then
+ * everything else.
+ *
+ * Every month gets the same parts, zeroes included, so a colour means the
+ * same thing in every bar. Fuel of a type the car no longer lists - its fuels
+ * were changed after it was logged - goes under [OTHER_COSTS] with the
+ * expenses: a part of its own would appear in some months and not others.
+ *
+ * Distance is not split. A plug-in hybrid's odometer counts every kilometre
+ * whichever fuel drove it, so there is no honest per-fuel distance to show.
+ */
+fun costBreakdown(month: MonthSummary, carFuels: List<String>): List<CostPart> {
+    val fuels = carFuels.distinct()
+    val fuelParts = fuels.map { CostPart(it, month.fuelCostByType[it] ?: 0.0) }
+    val unlisted = month.fuelCostByType.filterKeys { it !in fuels }.values.sum()
+    return fuelParts + CostPart(OTHER_COSTS, month.expenseCost + unlisted)
+}
+
+/**
+ * The average month in the same parts as [costBreakdown]: each part's total
+ * over the same months the overall average uses, so the parts add up to it.
+ */
+fun averageCostBreakdown(months: List<MonthSummary>, carFuels: List<String>): List<CostPart> {
+    if (months.isEmpty()) return emptyList()
+    val perMonth = months.map { costBreakdown(it, carFuels) }
+    return perMonth.first().indices.map { i ->
+        CostPart(perMonth.first()[i].label, perMonth.sumOf { it[i].amount } / months.size)
+    }
 }
 
 /**
@@ -156,6 +201,25 @@ fun barFractions(values: List<Double>): List<Float> {
     val max = values.maxOrNull() ?: 0.0
     if (max <= 0.0) return values.map { 0f }
     return values.map { (it / max).coerceIn(0.0, 1.0).toFloat() }
+}
+
+/**
+ * Heights of a stacked bar's parts, in the order given, for a bar [total]
+ * tall with [gap] between neighbouring parts.
+ *
+ * A part with nothing in it gets no height and no gap. The gaps come out of
+ * the bar rather than being added to it, so a stacked bar is exactly as tall
+ * as the same total drawn plain. A part too small to see is still drawn
+ * [minimum] tall: a sliver says "a little", nothing says "none".
+ */
+fun stackHeights(amounts: List<Double>, total: Float, gap: Float, minimum: Float = 1f): List<Float> {
+    val shown = amounts.count { it > 0 }
+    val sum = amounts.filter { it > 0 }.sum()
+    if (shown == 0 || sum <= 0.0) return amounts.map { 0f }
+    val available = (total - gap * (shown - 1)).coerceAtLeast(0f)
+    return amounts.map { amount ->
+        if (amount > 0) (available * (amount / sum)).toFloat().coerceAtLeast(minimum) else 0f
+    }
 }
 
 /** "mar 2026", in the given locale. */
