@@ -295,6 +295,27 @@ figure - would be a guess presented as a measurement. The colours are fixed
 by position (first fuel blue, second orange, the rest aqua) and were checked
 with a colour-blindness validator against both card colours.
 
+**An odometer reading has to fit its date.** The odometer only counts up, so
+a reading lower than one from an earlier day, or higher than one from a later
+day, is refused when a fill-up is saved or edited - most often it is a date
+typed a year out. The message names the entry it clashes with, since that
+may be the one that is wrong. Readings on the same day are not compared: their
+order within the day is not known.
+
+Readings already in the history - typed before this check, or imported - are
+flagged in the list. Not every entry in a clash is flagged: one reading dated
+a year early clashes with the whole year after it. The list keeps the longest
+run of readings that rise with their dates and flags only what is left, which
+for a single mistake is that one entry.
+
+Until it is fixed, a flagged reading is left out of every calculation -
+consumption, averages, charts, monthly distance, "best ever" and the reminder
+estimate - as if it had never been entered. Counted, one reading dated a year
+early reads as tens of thousands of kilometres on one tank: a consumption near
+zero. The next fill-up of the same fuel gets no figure either, rather than one
+measured over fuel it does not count. The list still shows what was entered,
+with "Check odometer" where its consumption would be.
+
 **A reminder stores when it is next due, not when it was last done.** "The
 inspection is due on 15 March" can then be entered as it stands, without its
 history. Marking it done moves it on by its repeat, counted from the day and

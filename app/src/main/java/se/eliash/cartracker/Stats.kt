@@ -39,6 +39,8 @@ data class ChartSeries(
  * instead; see the note there.
  */
 fun calculateFuelStats(car: Car, fuelUps: List<FuelUp>): FuelStats {
+    // A reading that does not fit its date is left out; see withTrustedReadings.
+    val trusted = withTrustedReadings(fuelUps)
     var primaryLiters = 0.0
     var primaryCost = 0.0
     var primaryDistance = 0
@@ -50,7 +52,7 @@ fun calculateFuelStats(car: Car, fuelUps: List<FuelUp>): FuelStats {
     var lastPrimaryOdo = car.initialOdometer
     var lastSecondaryOdo = car.initialOdometer
 
-    fuelUps.sortedBy { it.dateMillis }.forEach { fuelUp ->
+    trusted.sortedBy { it.dateMillis }.forEach { fuelUp ->
         if (fuelUp.odometerKm <= 0) return@forEach
         when (fuelUp.fuelTypeUsed) {
             car.fuelType -> {
@@ -96,7 +98,7 @@ fun calculateFuelStats(car: Car, fuelUps: List<FuelUp>): FuelStats {
  * count distance from the odometer the car was registered with.
  */
 fun calculateChartSeries(car: Car, fuelUps: List<FuelUp>): ChartSeries {
-    val chronological = fuelUps.sortedBy { it.dateMillis }
+    val chronological = withTrustedReadings(fuelUps).sortedBy { it.dateMillis }
 
     val primaryConsumption = mutableListOf<Double>()
     val secondaryConsumption = mutableListOf<Double>()
@@ -198,10 +200,13 @@ data class EntryConsumption(
  * anything; on a tie it stays with the one that got there first.
  */
 fun consumptionTrend(historyNewestFirst: List<FuelUp>, initialOdometer: Int): Map<Int, EntryConsumption> {
-    val values = historyNewestFirst.mapIndexed { index, entry ->
+    // A reading that does not fit its date gets no figure, and neither does
+    // the fill-up measured from it; see withTrustedReadings.
+    val trusted = withTrustedReadings(historyNewestFirst)
+    val values = trusted.mapIndexed { index, entry ->
         entry to consumptionForEntry(
             entry = entry,
-            olderEntries = historyNewestFirst.subList(index + 1, historyNewestFirst.size),
+            olderEntries = trusted.subList(index + 1, trusted.size),
             initialOdometer = initialOdometer
         )
     }

@@ -27,6 +27,8 @@ fun HistoryEditDialogs(
             availableFuels = availableFuels,
             // The oldest fill-up has no previous one to have missed.
             canMarkMissed = fuelHistory.lastOrNull()?.id != editing.id,
+            history = fuelHistory,
+            locale = currencyLocale,
             onSave = { updated ->
                 viewModel.updateFuelEntry(updated)
                 onFuelUpDone()
