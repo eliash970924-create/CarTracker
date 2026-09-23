@@ -36,3 +36,15 @@ val CarTallyNightCard = Color(0xFF142929)
 val CarTallyMutedOnDark = Color(0xFFB9C4C1)
 // A control's edge on dark: 4.8:1 on the page, 3.8:1 on a card.
 val CarTallyOutlineOnDark = Color(0xFF748280)
+
+// Chart series: a car's fuels, then everything else, in this order. The
+// reference data-viz palette's first three slots, checked with its validator
+// against the card colours here - white, and the night card - for every
+// pair, colour-blind vision included. Aqua is 2.8:1 on white, under the 3:1
+// a mark should have, so the chart always writes the figures out beside it.
+val SeriesBlue = Color(0xFF2A78D6)
+val SeriesOrange = Color(0xFFEB6834)
+val SeriesAqua = Color(0xFF1BAF7A)
+val SeriesBlueOnDark = Color(0xFF3987E5)
+val SeriesOrangeOnDark = Color(0xFFD95926)
+val SeriesAquaOnDark = Color(0xFF199E70)

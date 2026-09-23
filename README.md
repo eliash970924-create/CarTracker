@@ -23,7 +23,8 @@ something real - see below.
   Tolls, Other), with recurring monthly costs filled in automatically
 - **Charts** for fuel price and consumption over time
 - **Monthly overview** of what the car costs and how far it goes, month by
-  month, with the running averages
+  month, with the running averages - cost split by fuel and everything else,
+  so a hybrid's petrol and electricity show separately
 - **Backup** that exports and restores everything: history, the car, and the photo
 - **Automatic backup** of the whole garage to one file - on Google Drive or the
   phone - kept up to date daily or weekly
@@ -271,6 +272,14 @@ success turns the status red and suggests "Back up now".
 The default car, or the only one; with several and no default, the garage
 opens and the form takes focus once a car is picked. A fill-up logged against
 a guessed car is a quiet error found months later, and costs more than a tap.
+
+**Monthly cost is split by fuel; distance is not.** Each cost bar stacks the
+car's fuels and then everything else, and the selected month lists each part
+with its amount. A plug-in hybrid's odometer counts every kilometre whichever
+fuel drove it, so a per-fuel distance - and with it a "saved by charging"
+figure - would be a guess presented as a measurement. The colours are fixed
+by position (first fuel blue, second orange, the rest aqua) and were checked
+with a colour-blindness validator against both card colours.
 
 **Every screen shares CarTally's neutrals.** A car brings its own accent -
 the bar, the buttons, the chart line - but the page, cards, borders and

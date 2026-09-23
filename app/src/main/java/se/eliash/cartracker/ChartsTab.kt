@@ -67,6 +67,7 @@ fun ChartsTab(
         if (subTab == "Monthly") {
             MonthlySection(
                 overview = overview,
+                carFuels = listOfNotNull(car.fuelType, car.secondaryFuelType),
                 currencyLocale = currencyLocale,
                 primaryColor = primaryColor,
                 modifier = Modifier.fillMaxSize()

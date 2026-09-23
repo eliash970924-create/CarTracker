@@ -288,4 +288,102 @@ class MonthlyOverviewTest {
             overview.months.map { monthLabel(it, Locale.ENGLISH) }
         )
     }
+
+    // --- a month's cost, split by fuel ---
+
+    private val now = at(2026, Calendar.APRIL, 15)
+
+    @Test
+    fun `a hybrid's fuel cost is kept per fuel`() {
+        val overview = monthlyOverview(
+            listOf(
+                fill(2026, Calendar.MARCH, 2, 1000, cost = 700.0, fuel = "Petrol"),
+                fill(2026, Calendar.MARCH, 9, 1200, cost = 120.0, fuel = "Electric"),
+                fill(2026, Calendar.MARCH, 20, 1500, cost = 80.0, fuel = "Electric")
+            ),
+            emptyList(),
+            now
+        )
+        val march = monthOf(overview, 2026, Calendar.MARCH)
+        assertEquals(700.0, march.fuelCostByType["Petrol"]!!, delta)
+        assertEquals(200.0, march.fuelCostByType["Electric"]!!, delta)
+        assertEquals(march.fuelCost, march.fuelCostByType.values.sum(), delta)
+    }
+
+    @Test
+    fun `the breakdown follows the car's fuel order and ends with everything else`() {
+        val month = MonthSummary(2026, 2, fuelCost = 900.0, expenseCost = 500.0, distanceKm = 0.0,
+            fuelCostByType = mapOf("Electric" to 200.0, "Petrol" to 700.0))
+        assertEquals(
+            listOf(CostPart("Petrol", 700.0), CostPart("Electric", 200.0), CostPart(OTHER_COSTS, 500.0)),
+            costBreakdown(month, listOf("Petrol", "Electric"))
+        )
+    }
+
+    @Test
+    fun `every month has every part, so a colour always means the same thing`() {
+        val petrolOnly = MonthSummary(2026, 2, 700.0, 0.0, 0.0, mapOf("Petrol" to 700.0))
+        assertEquals(
+            listOf("Petrol", "Electric", OTHER_COSTS),
+            costBreakdown(petrolOnly, listOf("Petrol", "Electric")).map { it.label }
+        )
+        assertEquals(0.0, costBreakdown(petrolOnly, listOf("Petrol", "Electric"))[1].amount, 0.0)
+    }
+
+    @Test
+    fun `fuel the car no longer lists is counted, under other`() {
+        // Logged as diesel before the car was changed to petrol: not lost,
+        // and not passed off as petrol either.
+        val month = MonthSummary(2026, 2, 1000.0, 300.0, 0.0, mapOf("Petrol" to 600.0, "Diesel" to 400.0))
+        val parts = costBreakdown(month, listOf("Petrol"))
+        assertEquals(listOf(CostPart("Petrol", 600.0), CostPart(OTHER_COSTS, 700.0)), parts)
+        assertEquals(month.totalCost, parts.sumOf { it.amount }, delta)
+    }
+
+    @Test
+    fun `the average's parts add up to the average`() {
+        val overview = monthlyOverview(
+            listOf(
+                fill(2026, Calendar.JANUARY, 5, 1000, cost = 600.0, fuel = "Petrol"),
+                fill(2026, Calendar.MARCH, 5, 1300, cost = 90.0, fuel = "Electric")
+            ),
+            listOf(expense(2026, Calendar.FEBRUARY, 1, 300.0)),
+            now
+        )
+        val parts = averageCostBreakdown(overview.months, listOf("Petrol", "Electric"))
+        assertEquals(listOf(CostPart("Petrol", 200.0), CostPart("Electric", 30.0), CostPart(OTHER_COSTS, 100.0)), parts)
+        assertEquals(overview.averageMonthlyCost, parts.sumOf { it.amount }, delta)
+    }
+
+    @Test
+    fun `no months gives no average parts`() {
+        assertTrue(averageCostBreakdown(emptyList(), listOf("Petrol")).isEmpty())
+    }
+
+    // --- stacked bars ---
+
+    @Test
+    fun `a stacked bar is as tall as a plain one, gaps included`() {
+        val heights = stackHeights(listOf(300.0, 100.0, 600.0), total = 100f, gap = 2f)
+        assertEquals(96f, heights.sum(), 0.01f)
+        assertEquals(96f * 0.3f, heights[0], 0.01f)
+        assertEquals(96f * 0.6f, heights[2], 0.01f)
+    }
+
+    @Test
+    fun `an empty part takes neither height nor a gap`() {
+        val heights = stackHeights(listOf(500.0, 0.0, 500.0), total = 100f, gap = 2f)
+        assertEquals(listOf(49f, 0f, 49f), heights)
+    }
+
+    @Test
+    fun `a tiny part is still drawn`() {
+        val heights = stackHeights(listOf(10000.0, 1.0), total = 100f, gap = 2f)
+        assertEquals(1f, heights[1], 0.0f)
+    }
+
+    @Test
+    fun `nothing to stack gives nothing`() {
+        assertEquals(listOf(0f, 0f), stackHeights(listOf(0.0, 0.0), total = 100f, gap = 2f))
+    }
 }
