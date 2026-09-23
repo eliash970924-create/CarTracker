@@ -82,6 +82,10 @@ Single-Activity Jetpack Compose UI over a Room database.
 | File | Role |
 | --- | --- |
 | `MainActivity.kt` | assembles the screen and owns the state the pieces share |
+| `AppPreferences.kt` | the default car, the theme and each car's last fuel |
+| `BackupActions.kt` | export, import and automatic backup's file picker, behind plain calls |
+| `HistoryEditDialogs.kt` | editing or deleting a fill-up or expense from the history lists |
+| `SystemBars.kt` | status and navigation bar icons that suit the colours behind them |
 | `EntriesTab.kt` | the fill-up form, the dashboard figures and the history list |
 | `ExpensesTab.kt` | the expense form, total and history |
 | `ChartsTab.kt` | fuel price, consumption and monthly charts |

@@ -1,15 +1,9 @@
 package se.eliash.cartracker
 
-import android.app.Activity
 import android.content.Context
-import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -24,28 +18,16 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.platform.LocalView
-import androidx.core.view.WindowCompat
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
 import java.util.Locale
 import se.eliash.cartracker.ui.theme.CarTallyAmber
-import se.eliash.cartracker.ui.theme.ThemeMode
 import se.eliash.cartracker.ui.theme.resolveDarkTheme
 import se.eliash.cartracker.ui.theme.CarTallyPetrol
 import se.eliash.cartracker.ui.theme.carColorScheme
 import se.eliash.cartracker.ui.theme.carTallyColorScheme
-
-/** Preference holding the id of the car to open at start. Absent means the garage. */
-private const val DEFAULT_CAR_KEY = "default_car_id"
-
-/** Preference holding the light / dark / follow-the-phone choice. */
-private const val THEME_KEY = "theme_mode"
 
 /** The "Log fill-up" shortcut's action, as named in res/xml/shortcuts.xml. */
 const val ACTION_LOG_FILL_UP = "se.eliash.cartracker.LOG_FILL_UP"
@@ -86,10 +68,6 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel(), startWithFillUp: Boo
     // like the rest, so turning the phone does not close it.
     var showSettings by rememberSaveable { mutableStateOf(false) }
 
-    // Which car an export is for. Saveable: the system file picker can outlive
-    // this screen, and its answer then arrives at a fresh one.
-    var exportCarId by rememberSaveable { mutableStateOf<Int?>(null) }
-
     // Null until the database has answered. Telling "not loaded yet" apart
     // from "no cars" is what keeps the garage from flashing up for a frame
     // before a default car opens.
@@ -107,17 +85,10 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel(), startWithFillUp: Boo
     var showAddCarDialog by remember { mutableStateOf(false) }
     var editingCar by remember { mutableStateOf<Car?>(null) }
 
-    // The car to open at start, if any. Kept in preferences, not the
-    // database: it is a choice about this phone, not a fact about the car.
-    var defaultCarId by remember {
-        mutableStateOf(prefs.getInt(DEFAULT_CAR_KEY, -1).takeIf { it >= 0 })
-    }
-    fun setDefaultCar(id: Int?) {
-        defaultCarId = id
-        val editor = prefs.edit()
-        if (id == null) editor.remove(DEFAULT_CAR_KEY) else editor.putInt(DEFAULT_CAR_KEY, id)
-        editor.apply()
-    }
+    // The default car, the theme and each car's last fuel: choices about this
+    // phone, kept in preferences rather than the database.
+    val appPrefs = rememberAppPreferences(prefs)
+    val defaultCarId = appPrefs.defaultCarId
 
     // Set by the "Log fill-up" shortcut: the form takes focus the next time
     // it appears. Not saveable, so turning the phone does not do it again.
@@ -164,7 +135,7 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel(), startWithFillUp: Boo
 
     val availableFuels = remember(selectedCar) { listOfNotNull(selectedCar?.fuelType, selectedCar?.secondaryFuelType).ifEmpty { listOf("Petrol") } }
     var entryFuelType by remember(selectedCar) {
-        val savedFuel = selectedCar?.let { prefs.getString("last_fuel_${it.id}", null) }
+        val savedFuel = selectedCar?.let { appPrefs.lastFuel(it.id) }
         mutableStateOf(if (savedFuel != null && availableFuels.contains(savedFuel)) savedFuel else (availableFuels.firstOrNull() ?: "Petrol"))
     }
 
@@ -180,147 +151,11 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel(), startWithFillUp: Boo
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
     }
 
-    // Shared with automatic backup: import matches existing rows by this day.
-    val formatBackupDate: (Long) -> String = ::formatBackupDay
-
-    // Both exports read the chosen car's history from the database rather than
-    // what is on screen, so Settings can export any car, not only the open one.
-    val exportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("text/csv")
-    ) { uri ->
-        uri?.let {
-            val car = cars.firstOrNull { c -> c.id == exportCarId } ?: return@let
-            scope.launch(Dispatchers.IO) {
-                try {
-                    val (fuelUps, expenses) = viewModel.historyForExport(car.id)
-                    context.contentResolver.openOutputStream(it)
-                        ?.bufferedWriter(Charsets.UTF_8)
-                        ?.use { writer ->
-                            writeBackupCsv(
-                                writer, car, fuelUps, expenses,
-                                photoName = null, formatDate = formatBackupDate
-                            )
-                        }
-                    val summary = "Exported ${car.name}: ${fuelUps.size} fill-ups and ${expenses.size} expenses"
-                    launch(Dispatchers.Main) { Toast.makeText(context, summary, Toast.LENGTH_LONG).show() }
-                } catch (e: Exception) {
-                    launch(Dispatchers.Main) { Toast.makeText(context, "Export failed", Toast.LENGTH_SHORT).show() }
-                }
-            }
-        }
-    }
-
-    // A second export, because the two serve different ends: the CSV is what
-    // opens in a spreadsheet, the zip is what survives losing the phone.
-    val exportZipLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/zip")
-    ) { uri ->
-        uri?.let {
-            val car = cars.firstOrNull { c -> c.id == exportCarId } ?: return@let
-            scope.launch(Dispatchers.IO) {
-                try {
-                    val (fuelUps, expenses) = viewModel.historyForExport(car.id)
-                    context.contentResolver.openOutputStream(it)?.use { output ->
-                        writeBackupZip(output, context, car, fuelUps, expenses, formatDate = formatBackupDate)
-                    }
-                    val withPhoto = car.imageUri?.let { photo -> !isExternalPhotoReference(photo) } ?: false
-                    val summary = "Backed up ${car.name}: ${fuelUps.size} fill-ups, " +
-                        "${expenses.size} expenses" +
-                        if (withPhoto) " and the photo" else ""
-                    launch(Dispatchers.Main) { Toast.makeText(context, summary, Toast.LENGTH_LONG).show() }
-                } catch (e: Exception) {
-                    launch(Dispatchers.Main) { Toast.makeText(context, "Backup failed", Toast.LENGTH_SHORT).show() }
-                }
-            }
-        }
-    }
-    fun safeFileName(car: Car) = car.name.replace(" ", "_")
-
-    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let {
-            val fallbackCarId = selectedCar?.id
-            val fallbackCarName = selectedCar?.name
-            scope.launch(Dispatchers.IO) {
-                try {
-                    // A zip in either layout - one car or the whole garage - or
-                    // a bare CSV: every file the app has written still imports.
-                    val backups = readBackup(context) { context.contentResolver.openInputStream(it) }
-                    if (backups == null) {
-                        launch(Dispatchers.Main) {
-                            Toast.makeText(context, "Could not read that file", Toast.LENGTH_LONG).show()
-                        }
-                        return@launch
-                    }
-
-                    val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                    val parsed = backups.map { backup ->
-                        backup to parseBackupCsv(backup.csv) { text ->
-                            // parse throws on anything it does not recognise, and
-                            // an unreadable row is skipped rather than aborting.
-                            runCatching { dateFormat.parse(text)?.time }.getOrNull()
-                        }
-                    }
-                    val unreadable = parsed.sumOf { (_, csv) -> csv.unreadableRows }
-                    val cars = parsed.map { (backup, csv) ->
-                        FuelViewModel.CarImport(
-                            // The stored name comes from the archive read, not the
-                            // car row: the photo is saved under a fresh name.
-                            car = csv.car?.copy(photo = backup.photoName),
-                            fuelUps = csv.fuelUps,
-                            expenses = csv.expenses
-                        )
-                    }
-
-                    viewModel.importBackups(fallbackCarId, cars, dayOf = formatBackupDate) { results ->
-                        Toast.makeText(
-                            context, importMessage(results, fallbackCarName, unreadable), Toast.LENGTH_LONG
-                        ).show()
-                    }
-                } catch (e: Exception) { launch(Dispatchers.Main) { Toast.makeText(context, "Import failed", Toast.LENGTH_LONG).show() } }
-            }
-        }
-    }
-
-    // Automatic backup: the file is chosen here, once; the scheduled work does
-    // the rest. The state follows what the worker records, so Settings updates
-    // the moment a backup finishes.
-    val autoBackup = rememberAutoBackupState(prefs)
-    val autoBackupFileLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/zip")
-    ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        try {
-            // Kept across restarts. Without this the grant lasts only until
-            // the app is closed, and every scheduled run would fail.
-            context.contentResolver.takePersistableUriPermission(uri, BACKUP_URI_FLAGS)
-        } catch (e: SecurityException) {
-            Toast.makeText(
-                context,
-                "That place can't be kept for automatic backups. Try Google Drive or the phone's own storage.",
-                Toast.LENGTH_LONG
-            ).show()
-            return@rememberLauncherForActivityResult
-        }
-        // Let go of the file this replaces, so its grant does not linger.
-        autoBackup.uri?.takeIf { it != uri.toString() }?.let { old ->
-            runCatching { context.contentResolver.releasePersistableUriPermission(Uri.parse(old), BACKUP_URI_FLAGS) }
-        }
-        AutoBackupPrefs.setTarget(prefs, uri.toString(), displayNameOf(context, uri) ?: "Backup file")
-        val frequency = autoBackup.frequency.takeUnless { it == BackupFrequency.Off } ?: BackupFrequency.Daily
-        AutoBackupPrefs.setFrequency(prefs, frequency)
-        AutoBackupScheduler.apply(context, frequency)
-        // Straight away: the new file is not left empty, and a place that
-        // cannot really be written to shows up now rather than tomorrow.
-        AutoBackupScheduler.runNow(context)
-    }
+    // Export, import and automatic backup, each through the system's file picker.
+    val backup = rememberBackupActions(viewModel, prefs, cars, selectedCar)
 
     // Light, dark, or following the phone. Saved, so it holds across launches.
-    var themeMode by remember { mutableStateOf(ThemeMode.fromStored(prefs.getString(THEME_KEY, null))) }
-    fun changeThemeMode(mode: ThemeMode) {
-        themeMode = mode
-        prefs.edit().putString(THEME_KEY, mode.name).apply()
-    }
-    val darkTheme = resolveDarkTheme(themeMode, isSystemInDarkTheme())
+    val darkTheme = resolveDarkTheme(appPrefs.themeMode, isSystemInDarkTheme())
     val baseColors = if (darkTheme) darkColorScheme() else lightColorScheme()
 
     // A car wears its own colour; one without a colour chosen, CarTally petrol.
@@ -334,21 +169,7 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel(), startWithFillUp: Boo
         carColorScheme(baseColors, activePrimaryColor, darkTheme)
     }
 
-    // The top bar reaches up under the status bar - edge-to-edge is enforced
-    // from Android 15 for this target SDK - so the clock and battery have to
-    // suit it: light over a dark bar, dark over a pale one. The gesture bar
-    // sits over the page, so it follows the page. Earlier versions keep their
-    // own system bar colours, so are left alone.
-    val view = LocalView.current
-    val lightStatusIcons = dynamicThemeColors.primaryContainer.luminance() < 0.5f
-    SideEffect {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-            val window = (view.context as? Activity)?.window ?: return@SideEffect
-            val controller = WindowCompat.getInsetsController(window, view)
-            controller.isAppearanceLightStatusBars = !lightStatusIcons
-            controller.isAppearanceLightNavigationBars = !darkTheme
-        }
-    }
+    SystemBarAppearance(dynamicThemeColors, darkTheme)
 
     // Everything below wears these colours, the dialogs included. They used
     // to sit outside, in Material's default light theme - which is why their
@@ -384,7 +205,7 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel(), startWithFillUp: Boo
                     editingCar?.let { car ->
                         viewModel.deleteCar(car)
                         if (selectedCarId == car.id) selectedCarId = null
-                        if (defaultCarId == car.id) setDefaultCar(null)
+                        if (defaultCarId == car.id) appPrefs.changeDefaultCar(null)
                     }
                     showAddCarDialog = false
                     editingCar = null
@@ -393,46 +214,16 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel(), startWithFillUp: Boo
             )
         }
 
-        editingFuelUp?.let { editing ->
-            EditFuelUpDialog(
-                fuelUp = editing,
-                availableFuels = availableFuels,
-                // The oldest fill-up has no previous one to have missed.
-                canMarkMissed = fuelHistory.lastOrNull()?.id != editing.id,
-                onSave = { updated ->
-                    viewModel.updateFuelEntry(updated)
-                    editingFuelUp = null
-                },
-                onDelete = {
-                    // The entry before this one now covers its distance too, so it
-                    // has to be marked as following a gap - otherwise that distance
-                    // is credited to a tankful that never covered it.
-                    val index = fuelHistory.indexOfFirst { it.id == editing.id }
-                    if (index > 0) {
-                        viewModel.updateFuelEntry(fuelHistory[index - 1].copy(missedPrevious = true))
-                    }
-                    viewModel.deleteFuelEntry(editing)
-                    editingFuelUp = null
-                },
-                onDismiss = { editingFuelUp = null }
-            )
-        }
-
-        editingExpense?.let { editing ->
-            EditExpenseDialog(
-                expense = editing,
-                currencyLocale = svLocale,
-                onSave = { updated ->
-                    viewModel.updateExpense(original = editing, updated = updated)
-                    editingExpense = null
-                },
-                onDelete = {
-                    viewModel.deleteExpense(editing)
-                    editingExpense = null
-                },
-                onDismiss = { editingExpense = null }
-            )
-        }
+        HistoryEditDialogs(
+            editingFuelUp = editingFuelUp,
+            editingExpense = editingExpense,
+            fuelHistory = fuelHistory,
+            availableFuels = availableFuels,
+            currencyLocale = svLocale,
+            viewModel = viewModel,
+            onFuelUpDone = { editingFuelUp = null },
+            onExpenseDone = { editingExpense = null }
+        )
 
         // Back from a car goes to the garage rather than out of the app. An open
         // drawer closes first, as it would anyway.
@@ -534,38 +325,18 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel(), startWithFillUp: Boo
                 } else if (showSettings) {
                     SettingsScreen(
                         cars = cars,
-                        themeMode = themeMode,
-                        onThemeModeChange = { changeThemeMode(it) },
+                        themeMode = appPrefs.themeMode,
+                        onThemeModeChange = { appPrefs.changeThemeMode(it) },
                         defaultCarId = defaultCarId,
-                        onDefaultCarChange = { setDefaultCar(it) },
-                        onImport = { importLauncher.launch(arrayOf("*/*")) },
-                        onBackup = { car ->
-                            exportCarId = car.id
-                            exportZipLauncher.launch("${safeFileName(car)}_Backup.zip")
-                        },
-                        onExportCsv = { car ->
-                            exportCarId = car.id
-                            exportLauncher.launch("${safeFileName(car)}_History.csv")
-                        },
-                        autoBackup = autoBackup,
-                        onChooseBackupFile = { autoBackupFileLauncher.launch("CarTally_Backup.zip") },
-                        onAutoBackupFrequencyChange = { frequency ->
-                            AutoBackupPrefs.setFrequency(prefs, frequency)
-                            AutoBackupScheduler.apply(context, frequency)
-                        },
-                        onBackUpNow = {
-                            AutoBackupScheduler.runNow(context)
-                            Toast.makeText(context, "Backing up...", Toast.LENGTH_SHORT).show()
-                        },
-                        onStopAutoBackup = {
-                            autoBackup.uri?.let { current ->
-                                runCatching {
-                                    context.contentResolver.releasePersistableUriPermission(Uri.parse(current), BACKUP_URI_FLAGS)
-                                }
-                            }
-                            AutoBackupScheduler.stop(context)
-                            AutoBackupPrefs.clear(prefs)
-                        },
+                        onDefaultCarChange = { appPrefs.changeDefaultCar(it) },
+                        onImport = backup.importFile,
+                        onBackup = backup.exportZip,
+                        onExportCsv = backup.exportCsv,
+                        autoBackup = backup.autoBackup,
+                        onChooseBackupFile = backup.chooseAutoBackupFile,
+                        onAutoBackupFrequencyChange = backup.setAutoBackupFrequency,
+                        onBackUpNow = backup.backUpNow,
+                        onStopAutoBackup = backup.stopAutoBackup,
                         versionName = versionName,
                         modifier = Modifier.fillMaxSize().padding(paddingValues)
                     )
@@ -577,9 +348,9 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel(), startWithFillUp: Boo
                         locale = svLocale,
                         onOpenCar = { selectedCarId = it.id },
                         onToggleDefault = { car ->
-                            setDefaultCar(if (defaultCarId == car.id) null else car.id)
+                            appPrefs.changeDefaultCar(if (defaultCarId == car.id) null else car.id)
                         },
-                        onImport = { importLauncher.launch(arrayOf("*/*")) },
+                        onImport = backup.importFile,
                         modifier = Modifier.fillMaxSize().padding(paddingValues)
                     )
                 } else {
@@ -614,7 +385,7 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel(), startWithFillUp: Boo
                             fuelType = entryFuelType,
                             onFuelTypeChange = { fuel ->
                                 entryFuelType = fuel
-                                selectedCar?.let { prefs.edit().putString("last_fuel_${it.id}", fuel).apply() }
+                                selectedCar?.let { appPrefs.rememberFuel(it.id, fuel) }
                             },
                             availableFuels = availableFuels,
                             currencyLocale = svLocale,
@@ -623,7 +394,7 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel(), startWithFillUp: Boo
                                     selectedCar!!.id, fuel, dateMillis, odometer,
                                     amount, price, amount * price, missed
                                 )
-                                prefs.edit().putString("last_fuel_${selectedCar!!.id}", fuel).apply()
+                                appPrefs.rememberFuel(selectedCar!!.id, fuel)
                             },
                             onEditEntry = { editingFuelUp = it },
                             requestFocus = focusFillUpForm,
