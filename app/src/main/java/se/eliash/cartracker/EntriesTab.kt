@@ -55,9 +55,12 @@ class FuelEntryFormState {
     var dateMillis by mutableLongStateOf(System.currentTimeMillis())
     var showDatePicker by mutableStateOf(false)
     var fuelExpanded by mutableStateOf(false)
+    /** Why the last save was refused, until the date or reading changes. */
+    var error by mutableStateOf<String?>(null)
 
     /** Resets after a save, leaving the odometer/trip toggle where it was. */
     fun clear() {
+        error = null
         distance = ""
         amount = ""
         pricePerUnit = ""
@@ -117,7 +120,7 @@ fun EntriesTab(
             onDismissRequest = { form.showDatePicker = false },
             confirmButton = {
                 TextButton(onClick = {
-                    dpState.selectedDateMillis?.let { form.dateMillis = it }
+                    dpState.selectedDateMillis?.let { form.dateMillis = it; form.error = null }
                     form.showDatePicker = false
                 }) { Text("OK") }
             },
@@ -170,7 +173,7 @@ fun EntriesTab(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = form.distance,
-                onValueChange = { form.distance = it },
+                onValueChange = { form.distance = it; form.error = null },
                 label = { Text(if (form.distanceIsTrip == 0) "Odo (km)" else "Trip (km)") },
                 placeholder = { Text("Optional") },
                 singleLine = true,
@@ -247,13 +250,23 @@ fun EntriesTab(
                     else -> typed.toInt()
                 }
 
-                if (amount > 0) {
+                // A reading that does not fit the dates around it is refused,
+                // with the entry it clashes with named: saved, it would quietly
+                // spoil the consumption of the fill-ups either side.
+                val conflict = odometerConflict(form.dateMillis, odometer, fuelHistory)
+                if (conflict != null) {
+                    form.error = describeOdometerConflict(form.dateMillis, odometer, conflict, currencyLocale)
+                } else if (amount > 0) {
                     onSave(fuelType, form.dateMillis, odometer, amount, price, form.missedPrevious)
                     form.clear()
                 }
             },
             modifier = Modifier.fillMaxWidth()
         ) { Text("Save Entry") }
+
+        form.error?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
 
         HorizontalDivider()
 
@@ -319,6 +332,9 @@ fun EntriesTab(
             consumptionTrend(fuelHistory, car.initialOdometer)
         }
         val trendColors = trendColors()
+        // Readings already logged that do not fit the rest - a mistyped date,
+        // or an import - so they can be found and put right.
+        val outOfOrder = remember(fuelHistory) { outOfOrderEntries(fuelHistory) }
 
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -389,6 +405,15 @@ fun EntriesTab(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                        }
+                        if (fuelUp.id in outOfOrder) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "Odometer doesn't fit the dates around it. Long-press to check the date and reading.",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error
+                            )
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         val unitShort = unitFor(fuelUp.fuelTypeUsed)

@@ -28,6 +28,9 @@ fun EditFuelUpDialog(
     fuelUp: FuelUp,
     availableFuels: List<String>,
     canMarkMissed: Boolean,
+    /** The car's other fill-ups, which the edited reading has to fit between. */
+    history: List<FuelUp>,
+    locale: Locale,
     onSave: (FuelUp) -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit
@@ -40,6 +43,7 @@ fun EditFuelUpDialog(
     var fuelType by remember { mutableStateOf(fuelUp.fuelTypeUsed) }
     var dateMillis by remember { mutableLongStateOf(fuelUp.dateMillis) }
     var showDatePicker by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
 
     if (showDatePicker) {
         val dpState = rememberDatePickerState(initialSelectedDateMillis = dateMillis)
@@ -47,7 +51,7 @@ fun EditFuelUpDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
                 TextButton(onClick = {
-                    dpState.selectedDateMillis?.let { dateMillis = it }
+                    dpState.selectedDateMillis?.let { dateMillis = it; error = null }
                     showDatePicker = false
                 }) { Text("OK") }
             }
@@ -98,7 +102,7 @@ fun EditFuelUpDialog(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = odometer,
-                        onValueChange = { odometer = it },
+                        onValueChange = { odometer = it; error = null },
                         label = { Text("Odo (km)") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -147,17 +151,26 @@ fun EditFuelUpDialog(
                         Spacer(modifier = Modifier.weight(1f))
                     }
                 }
+                error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
             }
         },
         confirmButton = {
             Button(onClick = {
                 val amount = liters.replace(',', '.').toDoubleOrNull() ?: 0.0
                 val unitPrice = price.replace(',', '.').toDoubleOrNull() ?: 0.0
-                if (amount > 0) {
+                val reading = odometer.toIntOrNull() ?: 0
+                // The same check as a new entry, against every fill-up but
+                // this one - an edit is where a mistyped date gets fixed.
+                val conflict = odometerConflict(dateMillis, reading, history, excludeId = fuelUp.id)
+                if (conflict != null) {
+                    error = describeOdometerConflict(dateMillis, reading, conflict, locale)
+                } else if (amount > 0) {
                     onSave(
                         fuelUp.copy(
                             dateMillis = dateMillis,
-                            odometerKm = odometer.toIntOrNull() ?: 0,
+                            odometerKm = reading,
                             litersFilled = amount,
                             pricePerLiterSek = unitPrice,
                             totalCostSek = amount * unitPrice,
