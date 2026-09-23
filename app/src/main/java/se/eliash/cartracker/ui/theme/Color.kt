@@ -48,3 +48,11 @@ val SeriesAqua = Color(0xFF1BAF7A)
 val SeriesBlueOnDark = Color(0xFF3987E5)
 val SeriesOrangeOnDark = Color(0xFFD95926)
 val SeriesAquaOnDark = Color(0xFF199E70)
+
+// A fill-up's consumption against the one before: green for better, red for
+// worse. Each is at least 4.5:1 on its cards and page, as small text needs;
+// the arrow and the sign say the same, so the colour is never alone.
+val TrendBetter = Color(0xFF1E7B3C)
+val TrendWorse = Color(0xFFB3261E)
+val TrendBetterOnDark = Color(0xFF5CC47A)
+val TrendWorseOnDark = Color(0xFFF28B82)

@@ -7,7 +7,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
@@ -27,6 +31,10 @@ import kotlinx.coroutines.flow.first
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import se.eliash.cartracker.ui.theme.TrendBetter
+import se.eliash.cartracker.ui.theme.TrendBetterOnDark
+import se.eliash.cartracker.ui.theme.TrendWorse
+import se.eliash.cartracker.ui.theme.TrendWorseOnDark
 
 /**
  * The fill-up entry form's contents.
@@ -305,16 +313,20 @@ fun EntriesTab(
             }
         }
 
+        // Worked out from the whole history, so every fill-up already logged
+        // gets its arrow and the best one its mark, not only new ones.
+        val trend = remember(fuelHistory, car.initialOdometer) {
+            consumptionTrend(fuelHistory, car.initialOdometer)
+        }
+        val trendColors = trendColors()
+
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxSize()
         ) {
-            itemsIndexed(items = fuelHistory, key = { _, item -> item.id }) { index, fuelUp ->
-                val consumption = consumptionForEntry(
-                    entry = fuelUp,
-                    olderEntries = fuelHistory.subList(index + 1, fuelHistory.size),
-                    initialOdometer = car.initialOdometer
-                )
+            itemsIndexed(items = fuelHistory, key = { _, item -> item.id }) { _, fuelUp ->
+                val info = trend[fuelUp.id]
+                val consumption = info?.value
 
                 Card(
                     modifier = Modifier.fillMaxWidth().combinedClickable(
@@ -328,10 +340,29 @@ fun EntriesTab(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(
-                                dateFormat.format(Date(fuelUp.dateMillis)),
-                                style = MaterialTheme.typography.labelMedium
-                            )
+                            Column {
+                                Text(
+                                    dateFormat.format(Date(fuelUp.dateMillis)),
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                                if (info?.isBest == true) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            Icons.Filled.EmojiEvents,
+                                            contentDescription = null,
+                                            tint = trendColors.better,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            "Best ever",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = trendColors.better
+                                        )
+                                    }
+                                }
+                            }
                             Column(horizontalAlignment = Alignment.End) {
                                 val unit = unitFor(fuelUp.fuelTypeUsed)
                                 val consumptionText = when {
@@ -349,6 +380,9 @@ fun EntriesTab(
                                     },
                                     style = MaterialTheme.typography.labelLarge
                                 )
+                                info?.change?.takeIf { isVisibleChange(it) }?.let { change ->
+                                    TrendLine(change, currencyLocale, trendColors)
+                                }
                                 Text(
                                     if (fuelUp.odometerKm == 0) "Odometer: Data missing" else "${fuelUp.odometerKm} km",
                                     style = MaterialTheme.typography.labelSmall,
@@ -373,3 +407,41 @@ fun EntriesTab(
         }
     }
 }
+
+/** Green for better, red for worse, each in the step that reads on this page. */
+private data class TrendColors(val better: Color, val worse: Color)
+
+@Composable
+private fun trendColors(): TrendColors =
+    if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) {
+        TrendColors(TrendBetterOnDark, TrendWorseOnDark)
+    } else {
+        TrendColors(TrendBetter, TrendWorse)
+    }
+
+/**
+ * How a fill-up's consumption compares with the one before it: the arrow
+ * points the way the number moved, and lower is better, so down is green.
+ * The difference is written out too, so the colour is never the only sign.
+ */
+@Composable
+private fun TrendLine(change: Double, locale: Locale, colors: TrendColors) {
+    val better = change < 0
+    val color = if (better) colors.better else colors.worse
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            if (better) Icons.Filled.ArrowDownward else Icons.Filled.ArrowUpward,
+            contentDescription = if (better) "Better than the previous fill-up" else "Worse than the previous fill-up",
+            tint = color,
+            modifier = Modifier.size(12.dp)
+        )
+        Spacer(modifier = Modifier.width(2.dp))
+        Text(
+            "%.2f".format(locale, kotlin.math.abs(change)),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = color
+        )
+    }
+}
+
