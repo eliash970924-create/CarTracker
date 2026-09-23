@@ -12,6 +12,7 @@ import se.eliash.cartracker.ui.theme.CarTallyAmber
 import se.eliash.cartracker.ui.theme.CarTallyPetrol
 import se.eliash.cartracker.ui.theme.ThemeMode
 import se.eliash.cartracker.ui.theme.carColorScheme
+import se.eliash.cartracker.ui.theme.carTallyColorScheme
 import se.eliash.cartracker.ui.theme.contrastRatio
 import se.eliash.cartracker.ui.theme.liftUntilReadable
 import se.eliash.cartracker.ui.theme.resolveDarkTheme
@@ -110,6 +111,26 @@ class ThemeTest {
                 val scheme = carColorScheme(base, accent, dark)
                 assertEquals("$name primaryContainer alpha", 1f, scheme.primaryContainer.alpha, 0.001f)
                 assertEquals("$name secondaryContainer alpha", 1f, scheme.secondaryContainer.alpha, 0.001f)
+            }
+        }
+    }
+
+    @Test
+    fun `a car's screens share the garage's neutrals, whatever its colour`() {
+        // Material's own neutrals lean purple; the car screens used to wear
+        // them while the garage and Settings wore ivory.
+        listOf(lightColorScheme() to false, darkColorScheme() to true).forEach { (base, dark) ->
+            val garage = carTallyColorScheme(base, dark)
+            accents.forEach { (name, accent) ->
+                val car = carColorScheme(base, accent, dark)
+                val mode = if (dark) "dark" else "light"
+                assertEquals("$name $mode page", garage.background, car.background)
+                assertEquals("$name $mode surface", garage.surface, car.surface)
+                assertEquals("$name $mode cards", garage.surfaceContainerHighest, car.surfaceContainerHighest)
+                assertEquals("$name $mode secondary text", garage.onSurfaceVariant, car.onSurfaceVariant)
+                assertEquals("$name $mode borders", garage.outline, car.outline)
+                assertEquals("$name $mode dividers", garage.outlineVariant, car.outlineVariant)
+                assertEquals("$name $mode avatar backdrop", garage.surfaceVariant, car.surfaceVariant)
             }
         }
     }

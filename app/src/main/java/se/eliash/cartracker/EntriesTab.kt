@@ -13,12 +13,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.flow.first
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -68,12 +73,35 @@ fun EntriesTab(
     currencyLocale: Locale,
     onSave: (fuelType: String, dateMillis: Long, odometerKm: Int, amount: Double, pricePerUnit: Double, missedPrevious: Boolean) -> Unit,
     onEditEntry: (FuelUp) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Put the cursor in the amount field, with the keyboard up: the shortcut. */
+    requestFocus: Boolean = false,
+    onFocusRequested: () -> Unit = {}
 ) {
     val stats = remember(fuelHistory, car) { calculateFuelStats(car, fuelHistory) }
     val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
 
     fun unitFor(fuel: String?) = if (fuel == "Electric") "kWh" else "L"
+
+    // The litres (or kWh) field: the first one to type in, read straight off
+    // the pump.
+    val amountFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val windowInfo = LocalWindowInfo.current
+    LaunchedEffect(requestFocus) {
+        if (requestFocus) {
+            // Straight after launch the window may not have focus yet, and a
+            // keyboard asked for before it does is quietly not shown.
+            snapshotFlow { windowInfo.isWindowFocused }.first { it }
+            // Throws if the field is not laid out yet; the form is then still
+            // there to tap, which is all that is lost.
+            runCatching {
+                amountFocus.requestFocus()
+                keyboard?.show()
+            }
+            onFocusRequested()
+        }
+    }
 
     if (form.showDatePicker) {
         val dpState = rememberDatePickerState(initialSelectedDateMillis = form.dateMillis)
@@ -127,7 +155,7 @@ fun EntriesTab(
                 label = { Text(if (fuelType == "Electric") "kWh" else "Liters") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f).focusRequester(amountFocus)
             )
         }
 

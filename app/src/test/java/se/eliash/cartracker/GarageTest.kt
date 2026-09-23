@@ -42,6 +42,31 @@ class GarageTest {
         assertNull(launchCar(emptyList(), defaultCarId = 1))
     }
 
+    // --- the "Log fill-up" shortcut ---
+
+    @Test
+    fun `the shortcut opens the default car`() {
+        assertEquals(2, fillUpShortcutCar(listOf(car(1), car(2)), defaultCarId = 2)?.id)
+    }
+
+    @Test
+    fun `the shortcut opens the only car, even with no default`() {
+        // Unlike a plain start: asking to log a fill-up with one car leaves
+        // nothing to choose.
+        assertEquals(1, fillUpShortcutCar(listOf(car(1)), defaultCarId = null)?.id)
+    }
+
+    @Test
+    fun `with several cars and no default the shortcut asks, via the garage`() {
+        assertNull(fillUpShortcutCar(listOf(car(1), car(2)), defaultCarId = null))
+        assertNull(fillUpShortcutCar(listOf(car(1), car(3)), defaultCarId = 2))
+    }
+
+    @Test
+    fun `the shortcut with no cars opens the garage`() {
+        assertNull(fillUpShortcutCar(emptyList(), defaultCarId = null))
+    }
+
     // --- what a card says ---
 
     @Test

@@ -69,6 +69,14 @@ fun launchCar(cars: List<Car>, defaultCarId: Int?): Car? =
     defaultCarId?.let { id -> cars.firstOrNull { it.id == id } }
 
 /**
+ * The car the "Log fill-up" shortcut opens: the default, or failing that the
+ * only car there is. Null, and the garage, when there is a choice to make -
+ * logging a fill-up against a guessed car is worse than one extra tap.
+ */
+fun fillUpShortcutCar(cars: List<Car>, defaultCarId: Int?): Car? =
+    launchCar(cars, defaultCarId) ?: cars.singleOrNull()
+
+/**
  * The garage: every car, and the way into each.
  *
  * The landing screen unless a default car is set. The star on a card makes
