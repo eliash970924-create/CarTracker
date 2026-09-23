@@ -68,12 +68,13 @@ fun rememberBackupActions(
             scope.launch(Dispatchers.IO) {
                 try {
                     val (fuelUps, expenses) = viewModel.historyForExport(car.id)
+                    val reminders = viewModel.remindersForExport(car.id)
                     context.contentResolver.openOutputStream(it)
                         ?.bufferedWriter(Charsets.UTF_8)
                         ?.use { writer ->
                             writeBackupCsv(
                                 writer, car, fuelUps, expenses,
-                                photoName = null, formatDate = formatBackupDate
+                                photoName = null, formatDate = formatBackupDate, reminders = reminders
                             )
                         }
                     val summary = "Exported ${car.name}: ${fuelUps.size} fill-ups and ${expenses.size} expenses"
@@ -95,8 +96,12 @@ fun rememberBackupActions(
             scope.launch(Dispatchers.IO) {
                 try {
                     val (fuelUps, expenses) = viewModel.historyForExport(car.id)
+                    val reminders = viewModel.remindersForExport(car.id)
                     context.contentResolver.openOutputStream(it)?.use { output ->
-                        writeBackupZip(output, context, car, fuelUps, expenses, formatDate = formatBackupDate)
+                        writeBackupZip(
+                            output, context, car, fuelUps, expenses,
+                            formatDate = formatBackupDate, reminders = reminders
+                        )
                     }
                     val withPhoto = car.imageUri?.let { photo -> !isExternalPhotoReference(photo) } ?: false
                     val summary = "Backed up ${car.name}: ${fuelUps.size} fill-ups, " +
@@ -142,7 +147,8 @@ fun rememberBackupActions(
                             // car row: the photo is saved under a fresh name.
                             car = csv.car?.copy(photo = backup.photoName),
                             fuelUps = csv.fuelUps,
-                            expenses = csv.expenses
+                            expenses = csv.expenses,
+                            reminders = csv.reminders
                         )
                     }
 

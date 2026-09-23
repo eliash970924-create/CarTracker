@@ -39,7 +39,8 @@ class CarBackup(
     val car: Car,
     val fuelUps: List<FuelUp>,
     val expenses: List<Expense>,
-    val photoName: String?
+    val photoName: String?,
+    val reminders: List<Reminder> = emptyList()
 )
 
 fun writeBackupZip(
@@ -48,7 +49,8 @@ fun writeBackupZip(
     car: Car?,
     fuelUps: List<FuelUp>,
     expenses: List<Expense>,
-    formatDate: (Long) -> String
+    formatDate: (Long) -> String,
+    reminders: List<Reminder> = emptyList()
 ) {
     // Only a photo this app owns can be read back out. One still held as a
     // picker URI may already have lost its grant, and would fail here.
@@ -59,7 +61,7 @@ fun writeBackupZip(
     ZipOutputStream(output).use { zip ->
         zip.putNextEntry(ZipEntry(BACKUP_CSV_ENTRY))
         val writer = zip.writer(Charsets.UTF_8)
-        writeBackupCsv(writer, car, fuelUps, expenses, photoName, formatDate)
+        writeBackupCsv(writer, car, fuelUps, expenses, photoName, formatDate, reminders)
         // Flushed rather than closed: closing the writer would close the zip.
         writer.flush()
         zip.closeEntry()
@@ -90,7 +92,9 @@ fun writeGarageZip(
 
             zip.putNextEntry(ZipEntry(folder + BACKUP_CSV_ENTRY))
             val writer = zip.writer(Charsets.UTF_8)
-            writeBackupCsv(writer, backup.car, backup.fuelUps, backup.expenses, photo?.first, formatDate)
+            writeBackupCsv(
+                writer, backup.car, backup.fuelUps, backup.expenses, photo?.first, formatDate, backup.reminders
+            )
             writer.flush()
             zip.closeEntry()
 
