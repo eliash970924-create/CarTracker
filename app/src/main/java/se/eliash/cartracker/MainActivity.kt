@@ -39,10 +39,18 @@ class MainActivity : ComponentActivity() {
         // read at creation. A rotation re-reads it too; the screen acts on it
         // only once.
         val fromFillUpShortcut = intent?.action == ACTION_LOG_FILL_UP
+        // A reminder notification's tap: that car's reminders. Started in a
+        // fresh task too, for the same reason.
+        val remindersForCarId = intent?.takeIf { it.action == ACTION_OPEN_REMINDERS }
+            ?.getIntExtra(EXTRA_CAR_ID, -1)?.takeIf { it >= 0 }
+
+        // Kept if already scheduled, so this only ever sets it up once.
+        ReminderScheduler.schedule(this)
+
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    FuelEntryScreen(startWithFillUp = fromFillUpShortcut)
+                    FuelEntryScreen(startWithFillUp = fromFillUpShortcut, openRemindersForCarId = remindersForCarId)
                 }
             }
         }
@@ -51,7 +59,11 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun FuelEntryScreen(viewModel: FuelViewModel = viewModel(), startWithFillUp: Boolean = false) {
+fun FuelEntryScreen(
+    viewModel: FuelViewModel = viewModel(),
+    startWithFillUp: Boolean = false,
+    openRemindersForCarId: Int? = null
+) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -101,7 +113,11 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel(), startWithFillUp: Boo
         val loaded = loadedCars ?: return@LaunchedEffect
         if (!launchHandled) {
             launchHandled = true
-            if (startWithFillUp) {
+            val remindersCar = openRemindersForCarId?.let { id -> loaded.firstOrNull { it.id == id } }
+            if (remindersCar != null) {
+                selectedCarId = remindersCar.id
+                currentTab = "Reminders"
+            } else if (startWithFillUp) {
                 // With a choice of cars the garage opens instead, and the
                 // form still gets the focus once one is picked.
                 selectedCarId = fillUpShortcutCar(loaded, defaultCarId)?.id
@@ -142,6 +158,9 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel(), startWithFillUp: Boo
     // Keyed on the id, so editing the car's name does not start the history over.
     val fuelHistory by remember(selectedCarId) { selectedCarId?.let { viewModel.getFuelUpsForCar(it) } ?: kotlinx.coroutines.flow.emptyFlow() }.collectAsState(initial = emptyList())
     val expenseHistory by remember(selectedCarId) { selectedCarId?.let { viewModel.getExpensesForCar(it) } ?: kotlinx.coroutines.flow.emptyFlow() }.collectAsState(initial = emptyList())
+    val reminders by remember(selectedCarId) { selectedCarId?.let { viewModel.getRemindersForCar(it) } ?: kotlinx.coroutines.flow.emptyFlow() }.collectAsState(initial = emptyList())
+    // What wants attention now, for the strip above the fill-up form.
+    val dueNow = remember(reminders, fuelHistory) { dueReminders(reminders, fuelHistory, System.currentTimeMillis()) }
 
     val svLocale = Locale.forLanguageTag("sv-SE")
 
@@ -378,27 +397,43 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel(), startWithFillUp: Boo
                             modifier = Modifier.fillMaxSize().padding(paddingValues)
                         )
 
-                        "Entries" -> EntriesTab(
+                        "Entries" -> Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+                            DueRemindersBanner(dueNow, svLocale, onOpen = { currentTab = "Reminders" })
+                            EntriesTab(
+                                car = selectedCar!!,
+                                fuelHistory = fuelHistory,
+                                form = entryForm,
+                                fuelType = entryFuelType,
+                                onFuelTypeChange = { fuel ->
+                                    entryFuelType = fuel
+                                    selectedCar?.let { appPrefs.rememberFuel(it.id, fuel) }
+                                },
+                                availableFuels = availableFuels,
+                                currencyLocale = svLocale,
+                                onSave = { fuel, dateMillis, odometer, amount, price, missed ->
+                                    viewModel.saveFuelEntry(
+                                        selectedCar!!.id, fuel, dateMillis, odometer,
+                                        amount, price, amount * price, missed
+                                    )
+                                    appPrefs.rememberFuel(selectedCar!!.id, fuel)
+                                },
+                                onEditEntry = { editingFuelUp = it },
+                                requestFocus = focusFillUpForm,
+                                onFocusRequested = { focusFillUpForm = false },
+                                modifier = Modifier.fillMaxWidth().weight(1f)
+                            )
+                        }
+
+                        "Reminders" -> RemindersTab(
                             car = selectedCar!!,
+                            reminders = reminders,
                             fuelHistory = fuelHistory,
-                            form = entryForm,
-                            fuelType = entryFuelType,
-                            onFuelTypeChange = { fuel ->
-                                entryFuelType = fuel
-                                selectedCar?.let { appPrefs.rememberFuel(it.id, fuel) }
+                            locale = svLocale,
+                            onSave = { viewModel.saveReminder(it) },
+                            onDelete = { viewModel.deleteReminder(it) },
+                            onDone = { reminder, doneMillis, odometer ->
+                                viewModel.completeReminder(reminder, doneMillis, odometer)
                             },
-                            availableFuels = availableFuels,
-                            currencyLocale = svLocale,
-                            onSave = { fuel, dateMillis, odometer, amount, price, missed ->
-                                viewModel.saveFuelEntry(
-                                    selectedCar!!.id, fuel, dateMillis, odometer,
-                                    amount, price, amount * price, missed
-                                )
-                                appPrefs.rememberFuel(selectedCar!!.id, fuel)
-                            },
-                            onEditEntry = { editingFuelUp = it },
-                            requestFocus = focusFillUpForm,
-                            onFocusRequested = { focusFillUpForm = false },
                             modifier = Modifier.fillMaxSize().padding(paddingValues)
                         )
                     }

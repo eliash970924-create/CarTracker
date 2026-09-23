@@ -10,12 +10,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * Version 8 is the schema baseline. Its schema is exported to app/schemas and
  * committed, so every later version can be migrated from it properly.
  */
-@Database(entities = [FuelUp::class, Car::class, Expense::class], version = 9, exportSchema = true)
+@Database(entities = [FuelUp::class, Car::class, Expense::class, Reminder::class], version = 10, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun fuelUpDao(): FuelUpDao
     abstract fun carDao(): CarDao
     abstract fun expenseDao(): ExpenseDao
+    abstract fun reminderDao(): ReminderDao
 
     companion object {
         @Volatile
