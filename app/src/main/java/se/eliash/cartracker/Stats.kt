@@ -230,3 +230,22 @@ fun consumptionTrend(historyNewestFirst: List<FuelUp>, initialOdometer: Int): Ma
 
 /** Whether a change is big enough to show at the two decimals the list uses. */
 fun isVisibleChange(change: Double?): Boolean = change != null && kotlin.math.abs(change) >= 0.005
+
+/**
+ * What was last paid per litre or kWh of [fuel]: the price of its most recent
+ * fill-up with one, or null if none has a price. Read from the history, so it
+ * covers what was logged before this existed, and a price edited in the
+ * history is the one offered next time.
+ */
+fun lastPriceFor(fuelUps: List<FuelUp>, fuel: String): Double? =
+    fuelUps.filter { it.fuelTypeUsed == fuel && it.pricePerLiterSek > 0 }
+        .maxWithOrNull(compareBy<FuelUp>({ it.dateMillis }, { it.id }))
+        ?.pricePerLiterSek
+
+/**
+ * A price as the form shows it: a comma for the decimal, as it is typed on a
+ * Swedish keyboard, and no trailing zeros - "2,5", "18,49", "3".
+ */
+fun priceText(price: Double): String =
+    java.math.BigDecimal.valueOf(price).setScale(2, java.math.RoundingMode.HALF_UP)
+        .stripTrailingZeros().toPlainString().replace('.', ',')

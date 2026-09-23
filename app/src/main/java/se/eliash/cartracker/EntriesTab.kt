@@ -49,6 +49,12 @@ class FuelEntryFormState {
     var distance by mutableStateOf("")
     var amount by mutableStateOf("")
     var pricePerUnit by mutableStateOf("")
+    /**
+     * Whether [pricePerUnit] is the last price paid, filled in rather than
+     * typed. Only then is it replaced when the fuel changes; a price typed
+     * in is left alone.
+     */
+    var priceIsRemembered by mutableStateOf(false)
     var missedPrevious by mutableStateOf(false)
     /** 0 reads [distance] as an odometer reading, 1 as a trip distance. */
     var distanceIsTrip by mutableIntStateOf(0)
@@ -64,6 +70,7 @@ class FuelEntryFormState {
         distance = ""
         amount = ""
         pricePerUnit = ""
+        priceIsRemembered = false
         missedPrevious = false
         dateMillis = System.currentTimeMillis()
     }
@@ -93,6 +100,18 @@ fun EntriesTab(
     val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
 
     fun unitFor(fuel: String?) = if (fuel == "Electric") "kWh" else "L"
+
+    // The last price paid for the chosen fuel, filled in when the field is
+    // empty or still holds a remembered price: for a fixed home electricity
+    // rate, or a pump price that rarely moves, only the amount needs typing.
+    // Keyed on the price too, so it follows a save and an edited history.
+    val rememberedPrice = remember(fuelHistory, fuelType) { lastPriceFor(fuelHistory, fuelType) }
+    LaunchedEffect(fuelType, rememberedPrice) {
+        if (form.pricePerUnit.isBlank() || form.priceIsRemembered) {
+            form.pricePerUnit = rememberedPrice?.let { priceText(it) } ?: ""
+            form.priceIsRemembered = rememberedPrice != null
+        }
+    }
 
     // The litres (or kWh) field: the first one to type in, read straight off
     // the pump.
@@ -187,8 +206,10 @@ fun EntriesTab(
             )
             OutlinedTextField(
                 value = form.pricePerUnit,
-                onValueChange = { form.pricePerUnit = it },
-                label = { Text("Price per unit (SEK)") },
+                onValueChange = { form.pricePerUnit = it; form.priceIsRemembered = false },
+                // Said in the label rather than under the field, which would
+                // make it taller than the one beside it.
+                label = { Text(if (form.priceIsRemembered) "Last price (SEK)" else "Price per unit (SEK)") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.weight(1f)

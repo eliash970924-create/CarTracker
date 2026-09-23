@@ -21,7 +21,8 @@ import java.util.Locale
 private val SUB_TABS = listOf(
     "Price" to "Fuel Price",
     "Consumption" to "Consumption",
-    "Monthly" to "Monthly"
+    "Monthly" to "Monthly",
+    "Year" to "Year"
 )
 
 /**
@@ -51,6 +52,10 @@ fun ChartsTab(
         monthlyOverview(fuelHistory, expenses, Calendar.getInstance())
     }
 
+    val years = remember(fuelHistory, expenses, car) {
+        yearSummaries(car, fuelHistory, expenses, Calendar.getInstance())
+    }
+
     fun unitFor(fuel: String?) = if (fuel == "Electric") "kWh" else "L"
 
     Column(modifier = modifier) {
@@ -72,6 +77,11 @@ fun ChartsTab(
                 primaryColor = primaryColor,
                 modifier = Modifier.fillMaxSize()
             )
+            return@Column
+        }
+
+        if (subTab == "Year") {
+            YearSection(years = years, locale = currencyLocale, modifier = Modifier.fillMaxSize())
             return@Column
         }
 
