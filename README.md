@@ -19,6 +19,9 @@ something real - see below.
   its own odometer trail, so petrol and electric figures stay honest
 - **Fill-ups** by odometer reading or trip distance, with a "missed previous
   fill-up" flag so a gap does not silently distort consumption
+- **Trend on every fill-up**: a green or red arrow for better or worse
+  consumption than the one before, and the all-time best of each fuel marked -
+  worked out from the history, so it covers everything already logged
 - **Expenses** by category (Maintenance, Tires, Insurance, Parking, Wash,
   Tolls, Other), with recurring monthly costs filled in automatically
 - **Charts** for fuel price and consumption over time

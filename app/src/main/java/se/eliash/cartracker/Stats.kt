@@ -167,3 +167,61 @@ fun consumptionForEntry(
 
     return (entry.litersFilled / distance) * 100
 }
+
+/**
+ * What the history list shows beside one fill-up: its consumption, how that
+ * compares with the fill-up before it, and whether it is the best yet.
+ */
+data class EntryConsumption(
+    /** Per 100 km, or null when it cannot be worked out; see [consumptionForEntry]. */
+    val value: Double?,
+    /**
+     * This consumption less the previous measured one of the same fuel:
+     * negative is better, positive worse. Null for the first measured one, or
+     * when this one has no figure.
+     */
+    val change: Double?,
+    /** The lowest consumption of its fuel, of all the car's fill-ups. */
+    val isBest: Boolean
+)
+
+/**
+ * [EntryConsumption] for every fill-up in [historyNewestFirst], by id.
+ *
+ * Worked out from the history as it stands, so it covers everything already
+ * logged, and an edited or deleted fill-up changes the figures around it.
+ *
+ * Each fuel is compared only with itself: a hybrid's kWh and litres are not
+ * the same measure. Fill-ups without a figure - missed previous, no odometer -
+ * are passed over, so the one after a gap compares with the last one that
+ * was measured. "Best" needs two measured fill-ups of a fuel to mean
+ * anything; on a tie it stays with the one that got there first.
+ */
+fun consumptionTrend(historyNewestFirst: List<FuelUp>, initialOdometer: Int): Map<Int, EntryConsumption> {
+    val values = historyNewestFirst.mapIndexed { index, entry ->
+        entry to consumptionForEntry(
+            entry = entry,
+            olderEntries = historyNewestFirst.subList(index + 1, historyNewestFirst.size),
+            initialOdometer = initialOdometer
+        )
+    }
+
+    val result = mutableMapOf<Int, EntryConsumption>()
+    val oldestFirst = values.asReversed()
+
+    oldestFirst.groupBy { (entry, _) -> entry.fuelTypeUsed }.forEach { (_, forFuel) ->
+        val measured = forFuel.filter { it.second != null }
+        val best = if (measured.size >= 2) measured.minByOrNull { it.second!! }?.first?.id else null
+
+        var previous: Double? = null
+        forFuel.forEach { (entry, value) ->
+            val change = if (value != null) previous?.let { value - it } else null
+            result[entry.id] = EntryConsumption(value, change, isBest = entry.id == best)
+            if (value != null) previous = value
+        }
+    }
+    return result
+}
+
+/** Whether a change is big enough to show at the two decimals the list uses. */
+fun isVisibleChange(change: Double?): Boolean = change != null && kotlin.math.abs(change) >= 0.005
