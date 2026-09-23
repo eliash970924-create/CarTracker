@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">CarTally</string>
+    <string name="shortcut_fill_up_short">Log fill-up</string>
+    <string name="shortcut_fill_up_long">Log a fill-up</string>
 </resources>

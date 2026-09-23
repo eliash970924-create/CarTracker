@@ -12,6 +12,8 @@ import se.eliash.cartracker.ui.theme.CarTallyMuted
 import se.eliash.cartracker.ui.theme.CarTallyMutedOnDark
 import se.eliash.cartracker.ui.theme.CarTallyNight
 import se.eliash.cartracker.ui.theme.CarTallyNightCard
+import se.eliash.cartracker.ui.theme.CarTallyOutline
+import se.eliash.cartracker.ui.theme.CarTallyOutlineOnDark
 import se.eliash.cartracker.ui.theme.CarTallyPetrol
 import se.eliash.cartracker.ui.theme.CarTallyPetrolLifted
 import se.eliash.cartracker.ui.theme.contrastRatio
@@ -67,6 +69,12 @@ class PaletteTest {
         assertReadable("petrol on amber", CarTallyPetrol, CarTallyAmber, 3.0)
 
     @Test
+    fun `a text field's border is visible on the page and on a card`() {
+        assertReadable("outline on ivory", CarTallyOutline, CarTallyIvory, 3.0)
+        assertReadable("outline on white", CarTallyOutline, Color.White, 3.0)
+    }
+
+    @Test
     fun `the starred star is visible on a card`() =
         assertReadable("deep amber on white", CarTallyAmberDeep, Color.White, 3.0)
 
@@ -87,6 +95,12 @@ class PaletteTest {
     fun `the amber star and default label read on a dark card`() {
         assertReadable("amber icon on night card", CarTallyAmber, CarTallyNightCard, 3.0)
         assertReadable("amber text on night card", CarTallyAmber, CarTallyNightCard, 4.5)
+    }
+
+    @Test
+    fun `a text field's border is visible on dark`() {
+        assertReadable("outline on night", CarTallyOutlineOnDark, CarTallyNight, 3.0)
+        assertReadable("outline on night card", CarTallyOutlineOnDark, CarTallyNightCard, 3.0)
     }
 
     @Test

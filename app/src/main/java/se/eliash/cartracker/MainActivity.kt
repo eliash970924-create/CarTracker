@@ -47,18 +47,29 @@ private const val DEFAULT_CAR_KEY = "default_car_id"
 /** Preference holding the light / dark / follow-the-phone choice. */
 private const val THEME_KEY = "theme_mode"
 
+/** The "Log fill-up" shortcut's action, as named in res/xml/shortcuts.xml. */
+const val ACTION_LOG_FILL_UP = "se.eliash.cartracker.LOG_FILL_UP"
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // The launcher starts a shortcut in a fresh task, so this is always
+        // read at creation. A rotation re-reads it too; the screen acts on it
+        // only once.
+        val fromFillUpShortcut = intent?.action == ACTION_LOG_FILL_UP
         setContent {
-            MaterialTheme { Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { FuelEntryScreen() } }
+            MaterialTheme {
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    FuelEntryScreen(startWithFillUp = fromFillUpShortcut)
+                }
+            }
         }
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
+fun FuelEntryScreen(viewModel: FuelViewModel = viewModel(), startWithFillUp: Boolean = false) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -108,6 +119,10 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
         editor.apply()
     }
 
+    // Set by the "Log fill-up" shortcut: the form takes focus the next time
+    // it appears. Not saveable, so turning the phone does not do it again.
+    var focusFillUpForm by remember { mutableStateOf(false) }
+
     // Decided once, on the database's first answer. Saveable, so a rotation
     // does not re-open the default car over wherever you had got to.
     var launchHandled by rememberSaveable { mutableStateOf(false) }
@@ -115,7 +130,15 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
         val loaded = loadedCars ?: return@LaunchedEffect
         if (!launchHandled) {
             launchHandled = true
-            selectedCarId = launchCar(loaded, defaultCarId)?.id
+            if (startWithFillUp) {
+                // With a choice of cars the garage opens instead, and the
+                // form still gets the focus once one is picked.
+                selectedCarId = fillUpShortcutCar(loaded, defaultCarId)?.id
+                currentTab = "Entries"
+                focusFillUpForm = true
+            } else {
+                selectedCarId = launchCar(loaded, defaultCarId)?.id
+            }
         }
     }
 
@@ -603,6 +626,8 @@ fun FuelEntryScreen(viewModel: FuelViewModel = viewModel()) {
                                 prefs.edit().putString("last_fuel_${selectedCar!!.id}", fuel).apply()
                             },
                             onEditEntry = { editingFuelUp = it },
+                            requestFocus = focusFillUpForm,
+                            onFocusRequested = { focusFillUpForm = false },
                             modifier = Modifier.fillMaxSize().padding(paddingValues)
                         )
                     }

@@ -23,6 +23,9 @@ val CarTallyAmberDeep = Color(0xFFB8740C)
 // Secondary text: 6.5:1 on white, 5.8:1 on ivory.
 val CarTallyMuted = Color(0xFF5A5F63)
 val CarTallyHairline = Color(0xFFE4DED2)
+// Borders that have to be seen - a text field's edge - where the hairline is
+// only a divider: 3.7:1 on ivory, 3:1 being what a control's edge needs.
+val CarTallyOutline = Color(0xFF827D74)
 
 // Dark mode, from the "lifted petrol" mockup: the night page and the tile.
 val CarTallyNight = Color(0xFF0B0F12)
@@ -31,3 +34,5 @@ val CarTallyPetrolLifted = Color(0xFF1B3E3B)
 val CarTallyNightCard = Color(0xFF142929)
 // Secondary text on dark, from the same mockup: 9:1 on a card.
 val CarTallyMutedOnDark = Color(0xFFB9C4C1)
+// A control's edge on dark: 4.8:1 on the page, 3.8:1 on a card.
+val CarTallyOutlineOnDark = Color(0xFF748280)

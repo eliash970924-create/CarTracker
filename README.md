@@ -28,6 +28,8 @@ something real - see below.
 - **Automatic backup** of the whole garage to one file - on Google Drive or the
   phone - kept up to date daily or weekly
 - **Dark mode**, following the phone or set by hand
+- **A "Log fill-up" shortcut** on a long press of the app icon, straight to the
+  form with the keyboard up
 - **Settings** for the theme, the car to open at start, automatic backup, and
   backup and restore
 
@@ -264,6 +266,17 @@ mistake, the last backup is exactly what is needed, so it is left alone.
 battery savers stop scheduled work without a word, and a backup nobody knows
 has stopped is worse than none. More than twice the interval since the last
 success turns the status red and suggests "Back up now".
+
+**The "Log fill-up" shortcut opens a car only when there is no doubt which.**
+The default car, or the only one; with several and no default, the garage
+opens and the form takes focus once a car is picked. A fill-up logged against
+a guessed car is a quiet error found months later, and costs more than a tap.
+
+**Every screen shares CarTally's neutrals.** A car brings its own accent -
+the bar, the buttons, the chart line - but the page, cards, borders and
+secondary text are the garage's ivory and white (or night, in dark mode).
+Material's defaults lean purple, and the car screens used to look like a
+different app from the garage.
 
 ## The backup format
 
